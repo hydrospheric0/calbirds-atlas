@@ -4,10 +4,11 @@
 const WFS_BASE = 'https://geowebcache.ornith.cornell.edu/geoserver/wfs';
 const PROJ_PERIOD = 'EBIRD_ATL_CA_2026';
 
-// Allowed origins for CORS (production + preview + local dev)
+// Allowed origins for CORS (production + Cloudflare Pages preview)
 const ALLOWED_ORIGINS = [
   'https://calbirds.org',
   'https://www.calbirds.org',
+  'https://calbirds-atlas.pages.dev',
 ];
 
 export async function onRequestGet(context) {

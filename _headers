@@ -3,4 +3,4 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(self), camera=(), microphone=()
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://unpkg.com 'unsafe-inline'; style-src 'self' https://unpkg.com 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://server.arcgisonline.com https://geowebcache.ornith.cornell.edu; connect-src 'self'; worker-src 'none'; frame-ancestors 'none'; base-uri 'self'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://unpkg.com 'unsafe-inline'; style-src 'self' https://unpkg.com 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://server.arcgisonline.com https://geowebcache.ornith.cornell.edu; connect-src 'self' https://calbirds-atlas.pages.dev; worker-src 'none'; frame-ancestors 'none'; base-uri 'self'
