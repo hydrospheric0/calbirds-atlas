@@ -62,8 +62,8 @@ export async function onRequestGet(context) {
   // When zeroOnly=1, restrict to unvisited blocks and fetch more of them
   const zeroOnly = url.searchParams.get('zeroOnly') === '1';
 
-  // WFS 2.0 EPSG:4326 BBOX filter — axis order is (lat, lng) for this CRS
-  let cql = `BBOX(geometry,${sMinLat},${sMinLng},${sMaxLat},${sMaxLng},'EPSG:4326') AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
+  // GeoServer CQL BBOX uses (lng, lat) / (x, y) order regardless of EPSG:4326 axis convention
+  let cql = `BBOX(geometry,${sMinLng},${sMinLat},${sMaxLng},${sMaxLat},'EPSG:4326') AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
   if (zeroOnly) cql += ` AND num_complete = 0`;
 
   const wfsUrl = new URL(WFS_BASE);
