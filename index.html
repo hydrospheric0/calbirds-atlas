@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0c1b50" />
+  <title>CA Bird Atlas</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐦</text></svg>" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --brand: #0c1b50;
+      --accent: #009688;
+      --header-h: 2.75rem;
+      --panel-h: 33dvh;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      background: #e8eaed;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      padding-top: var(--safe-top);
+      padding-left: var(--safe-left);
+      padding-right: var(--safe-right);
+      padding-bottom: var(--safe-bottom);
+    }
+
+    /* ── BOTTOM INFO PANEL ───────────────────────────────── */
+    #infoPanel {
+      flex: 0 0 var(--panel-h);
+      background: #f1f3f5;
+      color: #1e293b;
+      overflow-y: auto;
+      border-top: 2px solid rgba(0,150,136,0.5);
+      padding: 0.6rem 0.75rem 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    #panelTitle {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      opacity: 0.4;
+      color: #1e293b;
+      flex-shrink: 0;
+    }
+
+    #panelBlockName {
+      font-size: 0.88rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex-shrink: 0;
+      color: #0f172a;
+    }
+
+    #panelBlockMeta {
+      font-size: 0.7rem;
+      opacity: 0.55;
+      color: #1e293b;
+      flex-shrink: 0;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.45rem 0.55rem;
+      flex-shrink: 0;
+    }
+
+    .stat-card {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 7px;
+      padding: 0.35rem 0.5rem;
+    }
+
+    .stat-label {
+      font-size: 0.6rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 0.12rem;
+    }
+
+    .stat-value {
+      font-size: 1.15rem;
+      font-weight: 800;
+      line-height: 1;
+      color: #0891b2;
+    }
+
+    .stat-unit {
+      font-size: 0.6rem;
+      font-weight: 400;
+      color: #94a3b8;
+      margin-left: 0.15em;
+    }
+
+    .panel-hint {
+      font-size: 0.72rem;
+      color: #94a3b8;
+      text-align: center;
+      padding: 0.6rem 0;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .panel-loading {
+      font-size: 0.72rem;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0;
+    }
+
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(0,0,0,0.1);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .complete-badge {
+      display: inline-block;
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 0.12rem 0.4rem;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      vertical-align: middle;
+      margin-left: 0.35em;
+    }
+
+    .priority-badge {
+      display: inline-block;
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 0.12rem 0.4rem;
+      border-radius: 999px;
+      background: rgba(220,120,0,0.85);
+      color: #fff;
+      vertical-align: middle;
+      margin-left: 0.35em;
+    }
+
+    .ebird-link {
+      display: block;
+      margin-top: 0.1rem;
+      font-size: 0.7rem;
+      color: #0891b2;
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+
+    .ebird-link:hover { text-decoration: underline; }
+
+    .current-loc-row {
+      flex-shrink: 0;
+      margin-bottom: 0.1rem;
+    }
+
+    .current-loc-badge {
+      display: inline-block;
+      font-size: 0.62rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: rgba(0,150,136,0.1);
+      border: 1px solid rgba(0,150,136,0.3);
+      border-radius: 999px;
+      padding: 0.1rem 0.45rem;
+    }
+
+    /* ── HEADER ─────────────────────────────────────────── */
+    #topbar {
+      background: var(--brand);
+      color: #f8fafc;
+      height: var(--header-h);
+      padding: 0 0.55rem;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-shrink: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      position: relative;
+      z-index: 1100;
+    }
+
+    .app-title {
+      font-size: 0.88rem;
+      font-weight: 800;
+      font-style: italic;
+      letter-spacing: -0.01em;
+      flex: 1 1 auto;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.3em;
+    }
+
+    .app-title .bird {
+      display: inline-block;
+      transform: scaleX(-1);
+      font-style: normal;
+    }
+
+    .app-title .sub {
+      font-weight: 400;
+      font-style: normal;
+      font-size: 0.75em;
+      opacity: 0.7;
+    }
+
+    #overlaySelect {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.22);
+      color: #f8fafc;
+      border-radius: 6px;
+      padding: 0.18rem 0.35rem;
+      font-size: 0.72rem;
+      font-family: inherit;
+      cursor: pointer;
+      max-width: 8.5rem;
+      flex-shrink: 0;
+    }
+
+    #overlaySelect option { background: var(--brand); color: #f8fafc; }
+
+    /* ── MAP TOP-RIGHT CONTROLS ──────────────────────────── */
+    .map-top-right {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      z-index: 1050;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.35rem;
+      pointer-events: none;
+    }
+
+    .map-ctrl-btn {
+      background: rgba(12,27,80,0.88);
+      border: 1px solid rgba(255,255,255,0.22);
+      color: #f8fafc;
+      border-radius: 6px;
+      width: 2.25rem;
+      height: 2.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      transition: background 0.12s;
+      -webkit-tap-highlight-color: transparent;
+      pointer-events: all;
+      flex-shrink: 0;
+    }
+
+    .map-ctrl-btn:active { background: rgba(12,27,80,1); }
+    .map-ctrl-btn.active { background: var(--accent); border-color: var(--accent); }
+
+    /* ── MAP ─────────────────────────────────────────────── */
+    #mapEl {
+      flex: 1 1 auto;
+      min-height: 0;
+      position: relative;
+    }
+
+    /* ── SETTINGS PANEL ──────────────────────────────────── */
+    #settingsPanel {
+      position: fixed;
+      top: calc(var(--safe-top) + var(--header-h) + 5.9rem);
+      right: 0.5rem;
+      background: rgba(12, 27, 80, 0.96);
+      color: #f8fafc;
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 10px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+      padding: 0.8rem 0.75rem;
+      z-index: 1050;
+      font-size: 0.78rem;
+      min-width: 155px;
+      display: none;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+
+    #settingsPanel.open { display: block; }
+
+    .panel-section {
+      margin-bottom: 0.65rem;
+    }
+
+    .panel-section:last-child { margin-bottom: 0; }
+
+    .panel-label {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      opacity: 0.55;
+      margin-bottom: 0.3rem;
+    }
+
+    .seg-btns {
+      display: flex;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.22);
+    }
+
+    .seg-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.65);
+      padding: 0.25rem 0.4rem;
+      font-size: 0.72rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .seg-btn + .seg-btn { border-left: 1px solid rgba(255,255,255,0.18); }
+    .seg-btn.active { background: var(--accent); color: #fff; }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .setting-row + .setting-row { margin-top: 0.45rem; }
+
+    /* Toggle switch */
+    .toggle { position: relative; width: 2.1rem; height: 1.15rem; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.18);
+      transition: background 0.2s;
+      cursor: pointer;
+    }
+
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      width: 0.87rem;
+      height: 0.87rem;
+      border-radius: 50%;
+      background: #fff;
+      top: 0.14rem;
+      left: 0.14rem;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+
+    .toggle input:checked + .toggle-track { background: var(--accent); }
+    .toggle input:checked + .toggle-track::after { transform: translateX(0.94rem); }
+
+    /* Opacity slider */
+    #opacitySlider {
+      width: 100%;
+      margin-top: 0.2rem;
+      accent-color: var(--accent);
+    }
+
+    /* ── LEAFLET OVERRIDES ───────────────────────────────── */
+    .leaflet-control-zoom { border: none !important; }
+
+    .leaflet-control-zoom a {
+      background: rgba(12,27,80,0.88) !important;
+      color: #f8fafc !important;
+      border: 1px solid rgba(255,255,255,0.18) !important;
+      border-radius: 6px !important;
+      backdrop-filter: blur(4px);
+    }
+
+    .leaflet-control-zoom a:hover { background: var(--accent) !important; }
+    .leaflet-control-zoom-in { border-radius: 6px 6px 0 0 !important; }
+    .leaflet-control-zoom-out { border-radius: 0 0 6px 6px !important; }
+
+    .leaflet-control-attribution {
+      font-size: 0.55rem !important;
+      background: rgba(255,255,255,0.7) !important;
+    }
+
+    /* custom panes pointer-events */
+    .leaflet-effort-pane,
+    .leaflet-blocks-pane { pointer-events: none; }
+
+    /* ── LOCATE MARKER ─────────────────────────────────── */
+    .loc-pulse {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2.5px solid #fff;
+      box-shadow: 0 0 0 4px rgba(0,150,136,0.25);
+    }
+
+    /* ── LOCATION PERMISSION GATE ────────────────────────── */
+    #locPermGate {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      background: rgba(15, 23, 42, 0.82);
+      z-index: 9999;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+    }
+
+    #locPermGate[hidden] { display: none !important; }
+
+    .loc-gate-card {
+      width: min(26rem, 92vw);
+      background: #0f172a;
+      color: #f8fafc;
+      border: 1px solid rgba(148,163,184,0.25);
+      border-radius: 12px;
+      padding: 1.4rem 1.2rem 1.1rem;
+      text-align: center;
+    }
+
+    .loc-gate-card h2 {
+      font-size: 1.05rem;
+      font-weight: 800;
+      margin-bottom: 0.45rem;
+    }
+
+    .loc-gate-card p {
+      font-size: 0.8rem;
+      opacity: 0.65;
+      line-height: 1.5;
+      margin-bottom: 1rem;
+    }
+
+    .loc-gate-btns {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .loc-gate-allow {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .loc-gate-skip {
+      background: transparent;
+      color: rgba(248,250,252,0.5);
+      border: 1px solid rgba(148,163,184,0.2);
+      border-radius: 8px;
+      padding: 0.55rem 1rem;
+      font-size: 0.78rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Location permission gate -->
+<div id="locPermGate">
+  <div class="loc-gate-card">
+    <h2>📍 Enable Location</h2>
+    <p>Allow precise location access to center the map on your position and find the atlas block you're in.</p>
+    <div class="loc-gate-btns">
+      <button id="locGateAllowBtn" class="loc-gate-allow">Allow Location Access</button>
+      <button id="locGateSkipBtn" class="loc-gate-skip">Skip — show all of California</button>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+  <header id="topbar">
+    <span class="app-title">
+      <span class="bird">🐦</span>CA Bird Atlas
+      <span class="sub">effort</span>
+    </span>
+
+    <select id="overlaySelect" aria-label="Select effort overlay">
+      <option value="">No overlay</option>
+      <option value="bba_effort_hrs_diurnal" selected>Diurnal hrs</option>
+      <option value="bba_effort_hrs_nocturnal">Nocturnal hrs</option>
+      <option value="bba_complete_checklists">Checklists</option>
+      <option value="bba_num_confirmed">Confirmed spp</option>
+      <option value="bba_num_coded">Coded spp</option>
+    </select>
+
+  </header>
+
+  <div id="mapEl">
+    <div class="map-top-right">
+      <button id="locateBtn" class="map-ctrl-btn" title="Zoom to my location" aria-label="Zoom to my location">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="3.5"/>
+          <line x1="12" y1="2" x2="12" y2="6"/>
+          <line x1="12" y1="18" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="6" y2="12"/>
+          <line x1="18" y1="12" x2="22" y2="12"/>
+        </svg>
+      </button>
+      <button id="settingsBtn" class="map-ctrl-btn" title="Layers &amp; settings" aria-label="Layers and settings">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="infoPanel">
+    <div class="panel-hint">Tap a block on the map to see effort stats</div>
+  </div>
+</div>
+
+<!-- Settings panel (inside body, absolutely positioned) -->
+<div id="settingsPanel" role="dialog" aria-label="Map settings">
+  <div class="panel-section">
+    <div class="panel-label">Basemap</div>
+    <div class="seg-btns">
+      <button class="seg-btn active" data-base="osm">OSM</button>
+      <button class="seg-btn" data-base="esri-topo">Topo</button>
+      <button class="seg-btn" data-base="esri-sat">Sat</button>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-label">Overlays</div>
+    <div class="setting-row">
+      <span>Block outlines</span>
+      <label class="toggle">
+        <input type="checkbox" id="blockToggle" checked />
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+    <div class="setting-row" style="margin-top:0.45rem">
+      <span>County outlines</span>
+      <label class="toggle">
+        <input type="checkbox" id="countyToggle" checked />
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+    <div class="setting-row" style="margin-top:0.45rem">
+      <span>Zero effort blocks</span>
+      <label class="toggle">
+        <input type="checkbox" id="zeroEffortToggle" />
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-label">Overlay opacity</div>
+    <input type="range" id="opacitySlider" min="10" max="100" value="70" aria-label="Overlay opacity" />
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  // ── CONFIG ────────────────────────────────────────────────────
+  const GWC_BASE = 'https://geowebcache.ornith.cornell.edu/ebird/gmaps';
+  const GWC_LAYER = 'BBA_CA_EFFORT_MAP';
+  const PROJ_PERIOD = 'EBIRD_ATL_CA_2026';
+  const CQL = encodeURIComponent(
+    `year_period='all' and month_period='all' and proj_period_id='${PROJ_PERIOD}'`
+  );
+  const ZERO_CQL = encodeURIComponent(
+    `num_complete=0 and year_period='all' and month_period='all' and proj_period_id='${PROJ_PERIOD}'`
+  );
+
+  function gwcTileUrl(style) {
+    return `${GWC_BASE}?layers=${GWC_LAYER}&format=image/png&styles=${style}&zoom={z}&x={x}&y={y}&CQL_FILTER=${CQL}`;
+  }
+
+  // ── MAP INIT ──────────────────────────────────────────────────
+  const map = L.map('mapEl', {
+    center: [37.5, -119.5],
+    zoom: 6,
+    zoomControl: false,
+    attributionControl: true,
+  });
+
+  map.addControl(L.control.zoom({ position: 'bottomright' }));
+
+  // Create dedicated panes so effort is always beneath block lines
+  map.createPane('effortPane').style.zIndex = 350;
+  map.createPane('zeroEffortPane').style.zIndex = 355;
+  map.createPane('blocksPane').style.zIndex = 380;
+
+  // ── BASEMAPS ──────────────────────────────────────────────────
+  const basemaps = {
+    osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }),
+    'esri-topo': L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+      { maxZoom: 19, attribution: '© Esri' }
+    ),
+    'esri-sat': L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { maxZoom: 19, attribution: '© Esri' }
+    ),
+  };
+
+  let currentBase = 'osm';
+  basemaps.osm.addTo(map);
+
+  // ── EBIRD OVERLAY LAYERS ──────────────────────────────────────
+  let effortLayer = null;
+  let blockLayer = null;
+  let zeroEffortLayer = null;
+  let overlayOpacity = 0.70;
+
+  function addEffortLayer(style) {
+    if (effortLayer) { map.removeLayer(effortLayer); effortLayer = null; }
+    if (!style) return;
+    effortLayer = L.tileLayer(gwcTileUrl(style), {
+      pane: 'effortPane',
+      opacity: overlayOpacity,
+      attribution: '© <a href="https://ebird.org/atlascalifornia">eBird/Cornell Lab</a>',
+    }).addTo(map);
+  }
+
+  function addBlockLayer() {
+    if (blockLayer) return;
+    blockLayer = L.tileLayer(gwcTileUrl('bba_block_status'), {
+      pane: 'blocksPane',
+      opacity: 0.85,
+      attribution: '© <a href="https://ebird.org/atlascalifornia">eBird/Cornell Lab</a>',
+    }).addTo(map);
+  }
+
+  function removeBlockLayer() {
+    if (!blockLayer) return;
+    map.removeLayer(blockLayer);
+    blockLayer = null;
+  }
+
+  function addZeroEffortLayer() {
+    if (zeroEffortLayer) return;
+    zeroEffortLayer = L.tileLayer(
+      `${GWC_BASE}?layers=${GWC_LAYER}&format=image/png&styles=bba_block_status&zoom={z}&x={x}&y={y}&CQL_FILTER=${ZERO_CQL}`,
+      {
+        pane: 'zeroEffortPane',
+        opacity: overlayOpacity,
+        attribution: '© <a href="https://ebird.org/atlascalifornia">eBird/Cornell Lab</a>',
+      }
+    ).addTo(map);
+  }
+
+  function removeZeroEffortLayer() {
+    if (!zeroEffortLayer) return;
+    map.removeLayer(zeroEffortLayer);
+    zeroEffortLayer = null;
+  }
+
+  // Add both by default
+  addEffortLayer('bba_effort_hrs_diurnal');
+  addBlockLayer();
+
+  // ── LOCATION TRACKING ─────────────────────────────────────
+  let locMarker = null;
+  let locAccCircle = null;
+  let watchId = null;
+  let firstFix = true;
+  let lastFetchLat = null;
+  let lastFetchLng = null;
+  let lastKnownLat = null;
+  let lastKnownLng = null;
+  let currentBlockCode = null;
+  const LOC_PERM_KEY = 'atlas_loc_perm';
+
+  function updateLocMarker(lat, lng, accuracy) {
+    if (locAccCircle) { map.removeLayer(locAccCircle); }
+    if (locMarker) { map.removeLayer(locMarker); }
+    locAccCircle = L.circle([lat, lng], {
+      radius: accuracy,
+      color: '#009688',
+      fillColor: '#009688',
+      fillOpacity: 0.08,
+      weight: 1.5,
+    }).addTo(map);
+    const icon = L.divIcon({
+      className: '',
+      html: '<div class="loc-pulse"></div>',
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    });
+    locMarker = L.marker([lat, lng], { icon, zIndexOffset: 500 }).addTo(map);
+  }
+
+  function onPosition(pos) {
+    const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+    lastKnownLat = lat;
+    lastKnownLng = lng;
+
+    // Confirm permission worked — mark as granted on first successful fix
+    localStorage.setItem(LOC_PERM_KEY, 'granted');
+    // Keep button active (teal) to show tracking is live
+    document.getElementById('locateBtn').classList.add('active');
+
+    updateLocMarker(lat, lng, accuracy);
+
+    if (firstFix) {
+      map.setView([lat, lng], 13, { animate: true });
+      firstFix = false;
+    }
+
+    // Re-fetch block only if moved > 250m (avoids constant fetches from GPS drift)
+    const moved = lastFetchLat === null || L.latLng(lat, lng).distanceTo(L.latLng(lastFetchLat, lastFetchLng)) > 250;
+    if (moved) {
+      lastFetchLat = lat;
+      lastFetchLng = lng;
+      fetchAndShowBlock(lat, lng, true);
+    }
+  }
+
+  function onPositionError(err) {
+    document.getElementById('locateBtn').classList.remove('active');
+    watchId = null;
+    // Clear the stored grant so the gate shows again next load
+    if (err.code === 1 /* PERMISSION_DENIED */) {
+      localStorage.removeItem(LOC_PERM_KEY);
+      showPanelError('Location access denied. Tap the locate button to try again.');
+    } else if (err.code === 2 /* POSITION_UNAVAILABLE */) {
+      showPanelError('Location unavailable. Check your device\u2019s GPS settings.');
+    } else {
+      showPanelError('Location timed out. Tap the locate button to retry.');
+    }
+    console.warn('Geolocation error:', err.code, err.message);
+  }
+
+  function startTracking() {
+    if (!navigator.geolocation) {
+      showPanelError('Geolocation is not supported by this browser.');
+      return;
+    }
+    firstFix = true;
+    lastFetchLat = null;
+    lastFetchLng = null;
+    if (watchId !== null) {
+      // Already watching — re-center on current known position or next fix
+      document.getElementById('locateBtn').classList.add('active');
+      if (lastKnownLat !== null) {
+        map.setView([lastKnownLat, lastKnownLng], Math.max(map.getZoom(), 13), { animate: true });
+      }
+      return;
+    }
+    document.getElementById('locateBtn').classList.add('active');
+    showPanelLoading();
+    watchId = navigator.geolocation.watchPosition(onPosition, onPositionError,
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
+  }
+
+  document.getElementById('locateBtn').addEventListener('click', startTracking);
+
+  // ── SETTINGS PANEL TOGGLE ─────────────────────────────────────
+  const settingsPanel = document.getElementById('settingsPanel');
+  const settingsBtn = document.getElementById('settingsBtn');
+
+  settingsBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = settingsPanel.classList.toggle('open');
+    settingsBtn.classList.toggle('active', open);
+  });
+
+  document.addEventListener('click', () => {
+    settingsPanel.classList.remove('open');
+    settingsBtn.classList.remove('active');
+  });
+
+  settingsPanel.addEventListener('click', (e) => e.stopPropagation());
+
+  // ── OVERLAY PICKER ────────────────────────────────────────────
+  document.getElementById('overlaySelect').addEventListener('change', (e) => {
+    addEffortLayer(e.target.value);
+  });
+
+  // ── BASEMAP SWITCHER ──────────────────────────────────────────
+  document.querySelectorAll('[data-base]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const next = btn.dataset.base;
+      if (next === currentBase) return;
+      map.removeLayer(basemaps[currentBase]);
+      basemaps[next].addTo(map);
+      basemaps[next].bringToBack();
+      currentBase = next;
+      document.querySelectorAll('[data-base]').forEach((b) => {
+        b.classList.toggle('active', b.dataset.base === next);
+      });
+    });
+  });
+
+  // ── BLOCK LINES TOGGLE ────────────────────────────────────────
+  document.getElementById('blockToggle').addEventListener('change', (e) => {
+    e.target.checked ? addBlockLayer() : removeBlockLayer();
+  });
+
+  // ── OPACITY SLIDER ────────────────────────────────────────────
+  document.getElementById('opacitySlider').addEventListener('input', (e) => {
+    overlayOpacity = e.target.value / 100;
+    if (effortLayer) effortLayer.setOpacity(overlayOpacity);
+    if (zeroEffortLayer) zeroEffortLayer.setOpacity(overlayOpacity);
+  });
+
+  // ── LOCATION PERMISSION GATE ─────────────────────────────────
+  const locPermGate = document.getElementById('locPermGate');
+
+  document.getElementById('locGateAllowBtn').addEventListener('click', () => {
+    locPermGate.setAttribute('hidden', 'hidden');
+    startTracking();
+  });
+
+  document.getElementById('locGateSkipBtn').addEventListener('click', () => {
+    locPermGate.setAttribute('hidden', 'hidden');
+    localStorage.setItem(LOC_PERM_KEY, 'skipped');
+  });
+
+  // Auto-skip gate if permission was previously granted
+  if (localStorage.getItem(LOC_PERM_KEY) === 'granted') {
+    locPermGate.setAttribute('hidden', 'hidden');
+    startTracking();
+  }
+
+  // ── COUNTY OUTLINES (zoom ≥ 10) ──────────────────────────────
+  let countyLayer = null;
+  let countyGeoJson = null;
+  let countyEnabled = true;
+  const COUNTY_MIN_ZOOM = 10;
+
+  async function loadCountyData() {
+    if (countyGeoJson) return countyGeoJson;
+    const res = await fetch('./data/CA_counties_hires.json');
+    countyGeoJson = await res.json();
+    return countyGeoJson;
+  }
+
+  async function showCounties() {
+    if (countyLayer) return;
+    try {
+      const data = await loadCountyData();
+      countyLayer = L.geoJSON(data, {
+        pane: 'countyPane',
+        style: { color: '#475569', weight: 1.2, opacity: 0.7, fillOpacity: 0 },
+        interactive: false,
+      }).addTo(map);
+    } catch (e) {
+      console.warn('County outline load failed:', e);
+    }
+  }
+
+  function hideCounties() {
+    if (!countyLayer) return;
+    map.removeLayer(countyLayer);
+    countyLayer = null;
+  }
+
+  function updateCountyVisibility() {
+    if (countyEnabled && map.getZoom() >= COUNTY_MIN_ZOOM) {
+      showCounties();
+    } else {
+      hideCounties();
+    }
+  }
+
+  map.createPane('countyPane').style.zIndex = 390;
+  map.on('zoomend', updateCountyVisibility);
+
+  document.getElementById('countyToggle').addEventListener('change', (e) => {
+    countyEnabled = e.target.checked;
+    updateCountyVisibility();
+  });
+
+  // ── ZERO EFFORT TOGGLE ────────────────────────────────────────
+  document.getElementById('zeroEffortToggle').addEventListener('change', (e) => {
+    e.target.checked ? addZeroEffortLayer() : removeZeroEffortLayer();
+  });
+
+  // ── BLOCK NAME LOOKUP ────────────────────────────────────────
+  let blockNames = null;
+
+  async function ensureBlockNames() {
+    if (blockNames) return;
+    try {
+      const res = await fetch('./data/block_names.json');
+      blockNames = await res.json();
+    } catch (e) {
+      console.warn('Block names lookup load failed:', e);
+      blockNames = {};
+    }
+  }
+
+  function resolveBlockName(code) {
+    if (!blockNames || !blockNames[code]) return { name: code, county: '' };
+    const [name, county] = blockNames[code];
+    return { name, county };
+  }
+
+  // ── BOTTOM PANEL & BLOCK CLICK ───────────────────────────────
+  const infoPanel = document.getElementById('infoPanel');
+
+  function showPanelLoading() {
+    infoPanel.innerHTML = '<div class="panel-loading"><div class="spinner"></div>Loading block data…</div>';
+  }
+
+  function showPanelHint() {
+    infoPanel.innerHTML = '<div class="panel-hint">Tap a block on the map to see effort stats</div>';
+  }
+
+  function showPanelError(msg) {
+    const d = document.createElement('div');
+    d.className = 'panel-hint';
+    d.style.color = 'rgba(255,120,120,0.8)';
+    d.textContent = msg;
+    infoPanel.replaceChildren(d);
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function formatNum(v, decimals = 1) {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = parseFloat(v);
+    if (isNaN(n)) return '—';
+    return n === 0 ? '0' : n.toFixed(decimals).replace(/\.0$/, '');
+  }
+
+  function renderPanel(props, isCurrentLocation = false) {
+    const code = /^[A-Za-z0-9]+$/.test(props.block_code || '') ? props.block_code : 'unknown';
+    const { name: blockName, county: blockCounty } = resolveBlockName(code);
+    const isComplete = props.is_complete === 'Y' || props.is_complete === 'true' || props.is_complete === true;
+    const isPriority = props.priority_block === 'Y' || props.priority_block === 'true' || props.priority_block === true;
+    // block_code is validated alphanumeric above — safe as URL path segment
+    const ebirdUrl = `https://ebird.org/atlascalifornia/block/${code}`;
+
+    const completeBadge = isComplete ? '<span class="complete-badge">✓ Complete</span>' : '';
+    const priorityBadge = isPriority ? '<span class="priority-badge">★ Priority</span>' : '';
+    const countyLine = blockCounty ? `<div id="panelBlockMeta">${escHtml(blockCounty)} County</div>` : '';
+    const locRow = isCurrentLocation ? '<div class="current-loc-row"><span class="current-loc-badge">📍 Current location</span></div>' : '';
+
+    infoPanel.innerHTML = `
+      <div id="panelTitle">Block stats — all years</div>
+      <div id="panelBlockName">${escHtml(blockName)}${completeBadge}${priorityBadge}</div>
+      ${countyLine}
+      ${locRow}
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Diurnal hrs</div>
+          <div class="stat-value">${formatNum(props.diurnal_hours)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Nocturnal hrs</div>
+          <div class="stat-value">${formatNum(props.nocturnal_hours)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Checklists</div>
+          <div class="stat-value">${formatNum(props.num_complete, 0)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Confirmed ssp</div>
+          <div class="stat-value">${formatNum(props.num_confirmed, 0)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Coded ssp</div>
+          <div class="stat-value">${formatNum(props.num_coded, 0)}</div>
+        </div>
+        <div class="stat-card" style="opacity:0.4">
+          <div class="stat-label">eBird</div>
+          <div class="stat-value" style="font-size:0.72rem;font-weight:600;"><a class="ebird-link" style="margin:0" href="${escHtml(ebirdUrl)}" target="_blank" rel="noopener noreferrer">View block ↗</a></div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Block highlight layer (red outline around clicked block)
+  let blockHighlight = null;
+  map.createPane('highlightPane').style.zIndex = 395;
+
+  function setBlockHighlight(geojsonGeometry) {
+    if (blockHighlight) { map.removeLayer(blockHighlight); blockHighlight = null; }
+    if (!geojsonGeometry) return;
+    blockHighlight = L.geoJSON({ type: 'Feature', geometry: geojsonGeometry }, {
+      pane: 'highlightPane',
+      style: { color: '#e53e3e', weight: 2.5, opacity: 1, fillOpacity: 0, interactive: false },
+      interactive: false,
+    }).addTo(map);
+  }
+
+  // ── SHARED BLOCK FETCH ───────────────────────────────────────
+  async function fetchAndShowBlock(lat, lng, isCurrentLocation) {
+    showPanelLoading();
+    await ensureBlockNames();
+
+    const endpoint = `/api/blockinfo?lat=${lat}&lng=${lng}`;
+
+    try {
+      const res = await fetch(endpoint);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (!data.features || data.features.length === 0) {
+        showPanelError('No atlas block at this location.');
+        return;
+      }
+
+      const feat = data.features[0];
+      const incomingCode = feat.properties.block_code;
+      if (isCurrentLocation) {
+        // Skip re-render if still in the same block (watchPosition noise)
+        if (incomingCode && incomingCode === currentBlockCode) return;
+        currentBlockCode = incomingCode;
+        setBlockHighlight(null);
+        renderPanel(feat.properties, true);
+      } else {
+        currentBlockCode = incomingCode;
+        setBlockHighlight(feat.geometry);
+        renderPanel(feat.properties, false);
+      }
+    } catch (err) {
+      showPanelError('Could not load block data. Check connection.');
+      console.error('Block fetch error:', err);
+    }
+  }
+
+  map.on('click', (e) => {
+    const { lat, lng } = e.latlng;
+    fetchAndShowBlock(lat, lng, false);
+  });
+</script>
+</body>
+</html>
