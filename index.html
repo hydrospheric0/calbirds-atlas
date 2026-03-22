@@ -570,8 +570,8 @@
   <div class="panel-section">
     <div class="panel-label">Basemap</div>
     <div class="seg-btns">
-      <button class="seg-btn active" data-base="osm">OSM</button>
-      <button class="seg-btn" data-base="esri-topo">Topo</button>
+      <button class="seg-btn" data-base="osm">OSM</button>
+      <button class="seg-btn active" data-base="esri-topo">Topo</button>
       <button class="seg-btn" data-base="esri-sat">Sat</button>
     </div>
   </div>
@@ -595,7 +595,7 @@
     <div class="setting-row" style="margin-top:0.45rem">
       <span>Zero effort blocks</span>
       <label class="toggle">
-        <input type="checkbox" id="zeroEffortToggle" />
+        <input type="checkbox" id="zeroEffortToggle" checked />
         <span class="toggle-track"></span>
       </label>
     </div>
@@ -651,8 +651,8 @@
     ),
   };
 
-  let currentBase = 'osm';
-  basemaps.osm.addTo(map);
+  let currentBase = 'esri-topo';
+  basemaps['esri-topo'].addTo(map);
 
   // ── EBIRD OVERLAY LAYERS ──────────────────────────────────────
   let effortLayer = null;
@@ -685,43 +685,18 @@
     blockLayer = null;
   }
 
-  let zeroEffortEnabled = false;
-  let lastZeroBbox = null; // last fetched snapped bbox string
+  // Zero effort blocks — fetch all CA unvisited blocks once, cache in memory
+  let zeroBlocksCache = null;
 
-  // Snap a value down/up to nearest 0.25° grid (matching nearbyblocks.js)
-  const ZERO_GRID = 0.25;
-  function snapDown(v) { return Math.floor(v / ZERO_GRID) * ZERO_GRID; }
-  function snapUp(v) { return Math.ceil(v / ZERO_GRID) * ZERO_GRID; }
-
-  function currentBboxString() {
-    const b = map.getBounds();
-    const minLat = snapDown(b.getSouth());
-    const minLng = snapDown(b.getWest());
-    const maxLat = snapUp(b.getNorth());
-    const maxLng = snapUp(b.getEast());
-    return `${minLat},${minLng},${maxLat},${maxLng}`;
-  }
-
-  async function refreshZeroEffortLayer(force = false) {
-    if (!zeroEffortEnabled) return;
-    const bbox = currentBboxString();
-    if (!force && bbox === lastZeroBbox) return;
-    lastZeroBbox = bbox;
-
+  async function addZeroEffortLayer() {
+    if (zeroEffortLayer) return;
     try {
-      const res = await fetch(`/api/nearbyblocks?bbox=${bbox}&zeroOnly=1`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const geojson = await res.json();
-
-      // Server already filters to zero-effort blocks; guard with type-safe check
-      const zeroFeatures = (geojson.features || []).filter(
-        (f) => f.properties && Number(f.properties.num_complete) === 0
-      );
-
-      if (zeroEffortLayer) { map.removeLayer(zeroEffortLayer); zeroEffortLayer = null; }
-      if (zeroFeatures.length === 0) return;
-
-      zeroEffortLayer = L.geoJSON({ type: 'FeatureCollection', features: zeroFeatures }, {
+      if (!zeroBlocksCache) {
+        const res = await fetch('/api/zeroblocks');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        zeroBlocksCache = await res.json();
+      }
+      zeroEffortLayer = L.geoJSON(zeroBlocksCache, {
         pane: 'zeroEffortPane',
         style: { color: '#a855f7', weight: 1.5, opacity: overlayOpacity, fillOpacity: 0 },
         interactive: false,
@@ -731,25 +706,16 @@
     }
   }
 
-  function addZeroEffortLayer() {
-    zeroEffortEnabled = true;
-    lastZeroBbox = null; // force fresh fetch for current view
-    refreshZeroEffortLayer(true);
-  }
-
   function removeZeroEffortLayer() {
-    zeroEffortEnabled = false;
-    lastZeroBbox = null;
     if (!zeroEffortLayer) return;
     map.removeLayer(zeroEffortLayer);
     zeroEffortLayer = null;
   }
 
-  map.on('moveend zoomend', () => refreshZeroEffortLayer());
-
-  // Add both by default
+  // Add default layers
   addEffortLayer('bba_effort_hrs_diurnal');
   addBlockLayer();
+  addZeroEffortLayer();
 
   // ── LOCATION TRACKING ─────────────────────────────────────
   let locMarker = null;
