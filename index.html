@@ -192,9 +192,9 @@
       display: inline-block;
       font-size: 0.62rem;
       font-weight: 600;
-      color: var(--accent);
-      background: rgba(0,150,136,0.1);
-      border: 1px solid rgba(0,150,136,0.3);
+      color: #e53e3e;
+      background: rgba(229,62,62,0.1);
+      border: 1px solid rgba(229,62,62,0.3);
       border-radius: 999px;
       padding: 0.1rem 0.45rem;
     }
@@ -433,9 +433,9 @@
     .loc-pulse {
       width: 14px; height: 14px;
       border-radius: 50%;
-      background: var(--accent);
+      background: #e53e3e;
       border: 2.5px solid #fff;
-      box-shadow: 0 0 0 4px rgba(0,150,136,0.25);
+      box-shadow: 0 0 0 4px rgba(229,62,62,0.25);
     }
 
     /* ── LOCATION PERMISSION GATE ────────────────────────── */
@@ -732,8 +732,8 @@
     if (locMarker) { map.removeLayer(locMarker); }
     locAccCircle = L.circle([lat, lng], {
       radius: accuracy,
-      color: '#009688',
-      fillColor: '#009688',
+      color: '#e53e3e',
+      fillColor: '#e53e3e',
       fillOpacity: 0.08,
       weight: 1.5,
     }).addTo(map);
@@ -1017,7 +1017,7 @@
 
     const completeBadge = isComplete ? '<span class="complete-badge">✓ Complete</span>' : '';
     const priorityBadge = isPriority ? '<span class="priority-badge">★ Priority</span>' : '';
-    const locBadge = isCurrentLocation ? '<span class="current-loc-badge">📍 You</span>' : '';
+    const locBadge = isCurrentLocation ? '<span class="current-loc-badge">● You</span>' : '';
     const metaParts = [blockCounty ? escHtml(blockCounty) + ' Co.' : '', locBadge].filter(Boolean).join(' ');
     const metaSpan = metaParts ? `<span id="panelBlockMeta">${metaParts}</span>` : '';
 
