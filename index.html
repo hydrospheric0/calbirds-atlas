@@ -434,8 +434,8 @@
       width: 14px; height: 14px;
       border-radius: 50%;
       background: #e53e3e;
-      border: 2.5px solid #fff;
-      box-shadow: 0 0 0 4px rgba(229,62,62,0.25);
+      border: 0.7px solid #fff;
+      box-shadow: 0 0 0 3px rgba(229,62,62,0.2);
     }
 
     /* ── LOCATION PERMISSION GATE ────────────────────────── */
@@ -623,7 +623,7 @@
   // ── MAP INIT ──────────────────────────────────────────────────
   const map = L.map('mapEl', {
     center: [37.5, -119.5],
-    zoom: 5,
+    zoom: 6,
     zoomControl: false,
     attributionControl: true,
   });
@@ -685,17 +685,43 @@
     blockLayer = null;
   }
 
-  let zeroBlocksCache = null; // GeoJSON cached after first fetch
+  let zeroEffortEnabled = false;
+  let lastZeroBbox = null; // last fetched snapped bbox string
 
-  async function addZeroEffortLayer() {
-    if (zeroEffortLayer) return;
+  // Snap a value down/up to nearest 0.25° grid (matching nearbyblocks.js)
+  const ZERO_GRID = 0.25;
+  function snapDown(v) { return Math.floor(v / ZERO_GRID) * ZERO_GRID; }
+  function snapUp(v) { return Math.ceil(v / ZERO_GRID) * ZERO_GRID; }
+
+  function currentBboxString() {
+    const b = map.getBounds();
+    const minLat = snapDown(b.getSouth());
+    const minLng = snapDown(b.getWest());
+    const maxLat = snapUp(b.getNorth());
+    const maxLng = snapUp(b.getEast());
+    return `${minLat},${minLng},${maxLat},${maxLng}`;
+  }
+
+  async function refreshZeroEffortLayer(force = false) {
+    if (!zeroEffortEnabled) return;
+    const bbox = currentBboxString();
+    if (!force && bbox === lastZeroBbox) return;
+    lastZeroBbox = bbox;
+
     try {
-      if (!zeroBlocksCache) {
-        const res = await fetch('/api/zeroblocks');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        zeroBlocksCache = await res.json();
-      }
-      zeroEffortLayer = L.geoJSON(zeroBlocksCache, {
+      const res = await fetch(`/api/nearbyblocks?bbox=${bbox}&zeroOnly=1`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const geojson = await res.json();
+
+      // Server already filters to zero-effort blocks; guard with type-safe check
+      const zeroFeatures = (geojson.features || []).filter(
+        (f) => f.properties && Number(f.properties.num_complete) === 0
+      );
+
+      if (zeroEffortLayer) { map.removeLayer(zeroEffortLayer); zeroEffortLayer = null; }
+      if (zeroFeatures.length === 0) return;
+
+      zeroEffortLayer = L.geoJSON({ type: 'FeatureCollection', features: zeroFeatures }, {
         pane: 'zeroEffortPane',
         style: { color: '#a855f7', weight: 1.5, opacity: overlayOpacity, fillOpacity: 0 },
         interactive: false,
@@ -705,11 +731,21 @@
     }
   }
 
+  function addZeroEffortLayer() {
+    zeroEffortEnabled = true;
+    lastZeroBbox = null; // force fresh fetch for current view
+    refreshZeroEffortLayer(true);
+  }
+
   function removeZeroEffortLayer() {
+    zeroEffortEnabled = false;
+    lastZeroBbox = null;
     if (!zeroEffortLayer) return;
     map.removeLayer(zeroEffortLayer);
     zeroEffortLayer = null;
   }
+
+  map.on('moveend zoomend', () => refreshZeroEffortLayer());
 
   // Add both by default
   addEffortLayer('bba_effort_hrs_diurnal');
@@ -734,8 +770,8 @@
       radius: accuracy,
       color: '#e53e3e',
       fillColor: '#e53e3e',
-      fillOpacity: 0.08,
-      weight: 1.5,
+      fillOpacity: 0.06,
+      weight: 0.8,
     }).addTo(map);
     const icon = L.divIcon({
       className: '',
@@ -759,7 +795,7 @@
     updateLocMarker(lat, lng, accuracy);
 
     if (firstFix) {
-      map.setView([lat, lng], 13, { animate: true });
+      map.setView([lat, lng], 11, { animate: true });
       firstFix = false;
     }
 
@@ -799,7 +835,7 @@
       // Already watching — re-center on current known position or next fix
       document.getElementById('locateBtn').classList.add('active');
       if (lastKnownLat !== null) {
-        map.setView([lastKnownLat, lastKnownLng], Math.max(map.getZoom(), 13), { animate: true });
+        map.setView([lastKnownLat, lastKnownLng], Math.max(map.getZoom(), 11), { animate: true });
       }
       return;
     }
