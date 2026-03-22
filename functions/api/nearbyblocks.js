@@ -89,17 +89,8 @@ export async function onRequestGet(context) {
       });
     }
 
-    // GeoServer WFS 2.0 EPSG:4326 returns [lat, lng]; GeoJSON needs [lng, lat]
+    // GeoServer WFS returns coordinates in correct GeoJSON [lng, lat] order already
     const geojson = await upstream.json();
-    function swapCoords(coords) {
-      if (typeof coords[0] === 'number') return [coords[1], coords[0]];
-      return coords.map(swapCoords);
-    }
-    for (const feat of geojson.features || []) {
-      if (feat.geometry?.coordinates) {
-        feat.geometry.coordinates = swapCoords(feat.geometry.coordinates);
-      }
-    }
 
     return new Response(JSON.stringify(geojson), {
       status: 200,
