@@ -704,7 +704,7 @@
     if (!force && bbox === lastZeroBbox) return;
     lastZeroBbox = bbox;
     try {
-      const res = await fetch(`/api/nearbyblocks?bbox=${bbox}&zeroOnly=1`);
+      const res = await fetch(`/api/nearbyblocks?bbox=${bbox}&zeroOnly=1&v=3`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const geojson = await res.json();
       if (zeroEffortLayer) { map.removeLayer(zeroEffortLayer); zeroEffortLayer = null; }
