@@ -1,6 +1,6 @@
-# CalBirds Atlas — California Breeding Bird Atlas Mobile App
+# California Breeding Bird Atlas Mobile App
 
-A mobile-optimised web app for field use during the [California Breeding Bird Atlas (2021–2026)](https://ebird.org/atlascalifornia). Designed to help observers quickly find zero-effort blocks, check survey progress, and orient in the field.
+A mobile-optimised web app for field use during the [California Breeding Bird Atlas (2026–2031)](https://ebird.org/atlascalifornia). Designed to help observers quickly find blocks with low coverage, check survey progress, and orient in the field.
 
 **Live app:** [calbirds-atlas.pages.dev](https://calbirds-atlas.pages.dev)
 
