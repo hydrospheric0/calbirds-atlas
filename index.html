@@ -741,7 +741,8 @@
   // Add default layers
   addEffortLayer('bba_effort_hrs_diurnal');
   addBlockLayer();
-  addZeroEffortLayer();
+  // Wait for map to be fully ready before loading zero effort layer
+  map.whenReady(() => addZeroEffortLayer());
 
   // ── LOCATION TRACKING ─────────────────────────────────────
   let locMarker = null;
