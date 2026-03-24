@@ -242,20 +242,35 @@
       opacity: 0.7;
     }
 
-    #overlaySelect {
-      background: rgba(255,255,255,0.1);
-      border: 1px solid rgba(255,255,255,0.22);
-      color: #f8fafc;
-      border-radius: 6px;
-      padding: 0.18rem 0.35rem;
-      font-size: 0.72rem;
-      font-family: inherit;
-      cursor: pointer;
-      max-width: 8.5rem;
+    #panelToolbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
       flex-shrink: 0;
     }
 
-    #overlaySelect option { background: var(--brand); color: #f8fafc; }
+    #panelContent {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.32rem;
+    }
+
+    #overlaySelect {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.14);
+      color: #1e293b;
+      border-radius: 6px;
+      padding: 0.17rem 0.35rem;
+      font-size: 0.68rem;
+      font-family: inherit;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    #overlaySelect option { background: #fff; color: #1e293b; }
 
     /* ── MAP TOP-RIGHT CONTROLS ──────────────────────────── */
     .map-top-right {
@@ -426,8 +441,8 @@
     }
 
     /* custom panes pointer-events */
-    .leaflet-effort-pane,
-    .leaflet-blocks-pane { pointer-events: none; }
+    .leaflet-effortPane-pane,
+    .leaflet-blocksPane-pane { pointer-events: none; }
 
     /* ── LOCATE MARKER ─────────────────────────────────── */
     .loc-pulse {
@@ -505,6 +520,118 @@
       cursor: pointer;
       font-family: inherit;
     }
+
+    /* ── INFO BUTTON (topbar) ───────────────────────────────── */
+    #infoBtn {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #f8fafc;
+      border-radius: 999px;
+      width: 1.6rem;
+      height: 1.6rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.82rem;
+      font-weight: 700;
+      font-style: italic;
+      font-family: Georgia, serif;
+      cursor: pointer;
+      flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #infoBtn:active { background: rgba(255,255,255,0.22); }
+
+    /* ── INFO MODAL ─────────────────────────────────────────── */
+    #infoModal {
+      position: fixed;
+      inset: 0;
+      z-index: 9000;
+    }
+    #infoModal[hidden] { display: none !important; }
+
+    .info-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15,23,42,0.55);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+    }
+
+    .info-modal-panel {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: min(26rem, 90vw);
+      max-height: 82dvh;
+      overflow-y: auto;
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.1);
+      padding: 1.2rem 1rem 1rem;
+      color: #0f172a;
+      font-size: 0.82rem;
+      line-height: 1.55;
+    }
+
+    .info-modal-close {
+      position: absolute;
+      top: 0.55rem;
+      right: 0.55rem;
+      width: 1.7rem;
+      height: 1.7rem;
+      border: 1px solid rgba(15,23,42,0.14);
+      border-radius: 999px;
+      background: #f8fafc;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0;
+      font-family: inherit;
+    }
+
+    .info-modal-panel h2 {
+      font-size: 1rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+      padding-right: 2rem;
+    }
+
+    .info-modal-panel h3 {
+      font-size: 0.68rem;
+      font-weight: 700;
+      margin-top: 0.75rem;
+      margin-bottom: 0.25rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .info-modal-panel p { margin-bottom: 0.35rem; color: #334155; }
+    .info-modal-panel a { color: var(--accent); }
+
+    .info-defs {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.22rem 0.65rem;
+      font-size: 0.76rem;
+    }
+    .info-defs dt { font-weight: 600; color: #0f172a; }
+    .info-defs dd { color: #475569; margin: 0; }
+
+    /* ── SCALE BAR ──────────────────────────────────────────── */
+    .leaflet-control-scale-line {
+      border-color: rgba(12,27,80,0.45) !important;
+      background: rgba(255,255,255,0.82) !important;
+      font-size: 0.58rem !important;
+      color: #0f172a !important;
+      padding: 0 3px !important;
+    }
   </style>
 </head>
 <body>
@@ -528,14 +655,7 @@
       <span class="sub">effort</span>
     </span>
 
-    <select id="overlaySelect" aria-label="Select effort overlay">
-      <option value="">No overlay</option>
-      <option value="bba_effort_hrs_diurnal" selected>Diurnal hrs</option>
-      <option value="bba_effort_hrs_nocturnal">Nocturnal hrs</option>
-      <option value="bba_complete_checklists">Checklists</option>
-      <option value="bba_num_confirmed">Confirmed spp</option>
-      <option value="bba_num_coded">Coded spp</option>
-    </select>
+    <button id="infoBtn" type="button" aria-label="About" title="About this app">i</button>
 
   </header>
 
@@ -561,7 +681,19 @@
   </div>
 
   <div id="infoPanel">
-    <div class="panel-hint">Tap a block on the map to see effort stats</div>
+    <div id="panelToolbar">
+      <select id="overlaySelect" aria-label="Select effort overlay">
+        <option value="">No overlay</option>
+        <option value="bba_effort_hrs_diurnal" selected>Diurnal hrs</option>
+        <option value="bba_effort_hrs_nocturnal">Nocturnal hrs</option>
+        <option value="bba_complete_checklists">Checklists</option>
+        <option value="bba_num_confirmed">Confirmed spp</option>
+        <option value="bba_num_coded">Coded spp</option>
+      </select>
+    </div>
+    <div id="panelContent">
+      <div class="panel-hint">Tap a block on the map to see effort stats</div>
+    </div>
   </div>
 </div>
 
@@ -607,6 +739,33 @@
   </div>
 </div>
 
+<!-- Info modal -->
+<div id="infoModal" hidden>
+  <div class="info-modal-backdrop" id="infoModalBackdrop"></div>
+  <div class="info-modal-panel" role="dialog" aria-modal="true" aria-labelledby="infoModalTitle">
+    <button id="infoCloseBtn" class="info-modal-close" type="button" aria-label="Close">×</button>
+    <h2 id="infoModalTitle">🐦 CA Bird Atlas</h2>
+    <p>An interactive effort map for the <a href="https://ebird.org/atlascalifornia" target="_blank" rel="noopener noreferrer">California Bird Atlas</a> (2021–2026), powered by eBird / Cornell Lab of Ornithology.</p>
+    <h3>How to use</h3>
+    <p>Tap any block on the map to see its effort statistics. Enable location to automatically track your current block while in the field.</p>
+    <dl class="info-defs">
+      <dt>Diurnal hrs</dt><dd>Total hours of daytime survey effort</dd>
+      <dt>Nocturnal hrs</dt><dd>Total hours of nighttime survey effort</dd>
+      <dt>Checklists</dt><dd>Complete eBird checklists submitted</dd>
+      <dt>Confirmed spp</dt><dd>Species confirmed breeding</dd>
+      <dt>Coded spp</dt><dd>Species with any breeding evidence code</dd>
+    </dl>
+    <h3>Overlays</h3>
+    <dl class="info-defs">
+      <dt>Block outlines</dt><dd>Atlas block boundaries</dd>
+      <dt>County outlines</dt><dd>County boundaries (visible at zoom ≥ 10)</dd>
+      <dt>Zero effort</dt><dd>Purple outlines — blocks with no checklists yet</dd>
+    </dl>
+    <h3>Data</h3>
+    <p>Effort data cached hourly from Cornell's GeoServer. Block boundaries © Cornell Lab / eBird.</p>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   // ── CONFIG ────────────────────────────────────────────────────
@@ -628,7 +787,7 @@
     attributionControl: true,
   });
 
-  map.addControl(L.control.zoom({ position: 'bottomright' }));
+  L.control.scale({ imperial: true, metric: true, position: 'bottomleft', maxWidth: 100 }).addTo(map);
 
   // Create dedicated panes so effort is always beneath block lines
   map.createPane('effortPane').style.zIndex = 350;
@@ -658,6 +817,7 @@
   let effortLayer = null;
   let blockLayer = null;
   let zeroEffortLayer = null;
+  let zeroEffortGen = 0;
   let overlayOpacity = 0.70;
 
   function addEffortLayer(style) {
@@ -688,6 +848,7 @@
   // Zero effort blocks — viewport-based fetch via nearbyblocks?zeroOnly=1
   let zeroEffortEnabled = false;
   let lastZeroBbox = null;
+  const ZERO_EFFORT_MIN_ZOOM = 8;
 
   const ZERO_GRID = 0.25;
   function snapDown(v) { return Math.floor(v / ZERO_GRID) * ZERO_GRID; }
@@ -700,13 +861,20 @@
 
   async function refreshZeroEffortLayer(force = false) {
     if (!zeroEffortEnabled) return;
+    if (map.getZoom() < ZERO_EFFORT_MIN_ZOOM) {
+      if (zeroEffortLayer) { map.removeLayer(zeroEffortLayer); zeroEffortLayer = null; }
+      lastZeroBbox = null;
+      return;
+    }
     const bbox = currentBboxString();
     if (!force && bbox === lastZeroBbox) return;
     lastZeroBbox = bbox;
+    const gen = ++zeroEffortGen;
     try {
       const res = await fetch(`/api/nearbyblocks?bbox=${bbox}&zeroOnly=1&v=3`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const geojson = await res.json();
+      if (gen !== zeroEffortGen) return;
       if (zeroEffortLayer) { map.removeLayer(zeroEffortLayer); zeroEffortLayer = null; }
       const features = (geojson.features || []).filter(
         f => f.properties && Number(f.properties.num_complete) === 0
@@ -731,6 +899,7 @@
   function removeZeroEffortLayer() {
     zeroEffortEnabled = false;
     lastZeroBbox = null;
+    ++zeroEffortGen;
     if (!zeroEffortLayer) return;
     map.removeLayer(zeroEffortLayer);
     zeroEffortLayer = null;
@@ -821,9 +990,6 @@
       showPanelError('Geolocation is not supported by this browser.');
       return;
     }
-    firstFix = true;
-    lastFetchLat = null;
-    lastFetchLng = null;
     if (watchId !== null) {
       // Already watching — re-center on current known position or next fix
       document.getElementById('locateBtn').classList.add('active');
@@ -832,6 +998,9 @@
       }
       return;
     }
+    firstFix = true;
+    lastFetchLat = null;
+    lastFetchLng = null;
     document.getElementById('locateBtn').classList.add('active');
     showPanelLoading();
     watchId = navigator.geolocation.watchPosition(onPosition, onPositionError,
@@ -841,7 +1010,7 @@
   document.getElementById('locateBtn').addEventListener('click', startTracking);
 
   // ── PANEL & DOM REFS ─────────────────────────────────────────
-  const infoPanel = document.getElementById('infoPanel');
+  const panelContent = document.getElementById('panelContent');
 
   // ── SETTINGS PANEL TOGGLE ─────────────────────────────────────
   const settingsPanel = document.getElementById('settingsPanel');
@@ -1005,11 +1174,11 @@
 
   // ── BOTTOM PANEL & BLOCK CLICK ───────────────────────────────
   function showPanelLoading() {
-    infoPanel.innerHTML = '<div class="panel-loading"><div class="spinner"></div>Loading block data…</div>';
+    panelContent.innerHTML = '<div class="panel-loading"><div class="spinner"></div>Loading block data…</div>';
   }
 
   function showPanelHint() {
-    infoPanel.innerHTML = '<div class="panel-hint">Tap a block on the map to see effort stats</div>';
+    panelContent.innerHTML = '<div class="panel-hint">Tap a block on the map to see effort stats</div>';
   }
 
   function showPanelError(msg) {
@@ -1017,7 +1186,7 @@
     d.className = 'panel-hint';
     d.style.color = 'rgba(255,120,120,0.8)';
     d.textContent = msg;
-    infoPanel.replaceChildren(d);
+    panelContent.replaceChildren(d);
   }
 
   function escHtml(str) {
@@ -1050,7 +1219,7 @@
     const metaParts = [blockCounty ? escHtml(blockCounty) + ' Co.' : '', locBadge].filter(Boolean).join(' ');
     const metaSpan = metaParts ? `<span id="panelBlockMeta">${metaParts}</span>` : '';
 
-    infoPanel.innerHTML = `
+    panelContent.innerHTML = `
       <div id="panelHeader">
         <div id="panelBlockName">${escHtml(blockName)}${completeBadge}${priorityBadge}</div>
         ${metaSpan}
@@ -1069,11 +1238,11 @@
           <div class="stat-value">${formatNum(props.num_complete, 0)}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Confirmed ssp</div>
+          <div class="stat-label">Confirmed spp</div>
           <div class="stat-value">${formatNum(props.num_confirmed, 0)}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Coded ssp</div>
+          <div class="stat-label">Coded spp</div>
           <div class="stat-value">${formatNum(props.num_coded, 0)}</div>
         </div>
         <div class="stat-card" style="opacity:0.4">
@@ -1100,7 +1269,10 @@
 
   // ── SHARED BLOCK FETCH ───────────────────────────────────────
   async function fetchAndShowBlock(lat, lng, isCurrentLocation) {
-    showPanelLoading();
+    // For tap-initiated fetches show loading immediately; for GPS updates keep
+    // the current block's stats visible until new data arrives so the panel
+    // doesn't flicker every 250 m while driving.
+    if (!isCurrentLocation) showPanelLoading();
     await ensureBlockNames();
 
     const endpoint = `/api/blockinfo?lat=${lat}&lng=${lng}`;
@@ -1111,7 +1283,10 @@
       const data = await res.json();
 
       if (!data.features || data.features.length === 0) {
-        showPanelError('No atlas block at this location.');
+        // For GPS updates, only show the error if we have no block displayed yet
+        if (!isCurrentLocation || currentBlockCode === null) {
+          showPanelError('No atlas block at this location.');
+        }
         return;
       }
 
@@ -1129,7 +1304,10 @@
         renderPanel(feat.properties, false);
       }
     } catch (err) {
-      showPanelError('Could not load block data. Check connection.');
+      // Don't wipe the panel on a transient GPS-background fetch failure
+      if (!isCurrentLocation) {
+        showPanelError('Could not load block data. Check connection.');
+      }
       console.error('Block fetch error:', err);
     }
   }
@@ -1137,6 +1315,18 @@
   map.on('click', (e) => {
     const { lat, lng } = e.latlng;
     fetchAndShowBlock(lat, lng, false);
+  });
+
+  // ── INFO MODAL ────────────────────────────────────────────────
+  const infoModal = document.getElementById('infoModal');
+  document.getElementById('infoBtn').addEventListener('click', () => {
+    infoModal.removeAttribute('hidden');
+  });
+  document.getElementById('infoCloseBtn').addEventListener('click', () => {
+    infoModal.setAttribute('hidden', 'hidden');
+  });
+  document.getElementById('infoModalBackdrop').addEventListener('click', () => {
+    infoModal.setAttribute('hidden', 'hidden');
   });
 </script>
 </body>

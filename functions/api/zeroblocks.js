@@ -57,6 +57,6 @@ function corsHeaders(contentType, requestOrigin) {
     'Content-Type': contentType,
     'Access-Control-Allow-Origin': origin,
     'Vary': 'Origin',
-    'Cache-Control': 'public, max-age=300',
+    'Cache-Control': 'public, max-age=21600',
   };
 }
