@@ -997,6 +997,16 @@
 
   map.on('moveend zoomend', () => refreshZeroEffortLayer());
 
+  const LAYER_NAMES = {
+    bba_effort_hrs_diurnal:   'Diurnal\nhrs',
+    bba_effort_hrs_nocturnal: 'Nocturnal\nhrs',
+    bba_complete_checklists:  'Complete\nlists',
+    bba_num_confirmed:        'Confirmed\nspp',
+    bba_num_coded:            'Coded\nspp',
+  };
+
+  const GWC_LEGEND_BASE = 'https://geowebcache.ornith.cornell.edu/geoserver/ows';
+
   // Add default layers
   addEffortLayer('bba_effort_hrs_diurnal');
   updateLegend('bba_effort_hrs_diurnal');
@@ -1116,16 +1126,6 @@
 
   // ── STAT TILE LAYER PICKER ──────────────────────────────────────
   let activeLayerStyle = 'bba_effort_hrs_diurnal';
-
-  const LAYER_NAMES = {
-    bba_effort_hrs_diurnal:   'Diurnal\nhrs',
-    bba_effort_hrs_nocturnal: 'Nocturnal\nhrs',
-    bba_complete_checklists:  'Complete\nlists',
-    bba_num_confirmed:        'Confirmed\nspp',
-    bba_num_coded:            'Coded\nspp',
-  };
-
-  const GWC_LEGEND_BASE = 'https://geowebcache.ornith.cornell.edu/geoserver/ows';
 
   function updateLegend(style) {
     const el = document.getElementById('mapLegend');
