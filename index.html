@@ -282,6 +282,47 @@
       padding-bottom: 0.1rem;
     }
 
+      /* ── MAP QUICK LEGEND (top-left) ────────────────────── */
+      #mapQuickLegend {
+        position: absolute;
+        top: 0.5rem;
+        left: 0.5rem;
+        z-index: 1050;
+        display: flex;
+        flex-direction: column;
+        gap: 0.28rem;
+        padding: 0.42rem 0.5rem;
+        border-radius: 8px;
+        background: rgba(12,27,80,0.88);
+        border: 1px solid rgba(255,255,255,0.16);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.28);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        pointer-events: none;
+      }
+      .map-quick-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.38rem;
+        color: #f8fafc;
+        font-size: 0.64rem;
+        font-weight: 600;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .map-quick-legend-swatch {
+        width: 0.72rem;
+        height: 0.72rem;
+        border-radius: 2px;
+        flex-shrink: 0;
+      }
+      .map-quick-legend-swatch.zero-effort {
+        background: #a855f7;
+      }
+      .map-quick-legend-swatch.active-block {
+        background: #e53e3e;
+      }
+
     /* ── MAP TOP-RIGHT CONTROLS ──────────────────────────── */
     .map-top-right {
       position: absolute;
@@ -772,6 +813,16 @@
   </header>
 
   <div id="mapEl">
+    <div id="mapQuickLegend" aria-label="Map key">
+      <div class="map-quick-legend-item">
+        <span class="map-quick-legend-swatch zero-effort" aria-hidden="true"></span>
+        <span>Zero effort block</span>
+      </div>
+      <div class="map-quick-legend-item">
+        <span class="map-quick-legend-swatch active-block" aria-hidden="true"></span>
+        <span>Active block</span>
+      </div>
+    </div>
     <div class="map-top-right">
       <button id="settingsBtn" class="map-ctrl-btn" title="Layers &amp; settings" aria-label="Layers and settings">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -1494,7 +1545,7 @@
         // Skip re-render if still in the same block (watchPosition noise)
         if (incomingCode && incomingCode === currentBlockCode) return;
         currentBlockCode = incomingCode;
-        setBlockHighlight(null);
+        setBlockHighlight(feat.geometry);
         renderPanel(feat.properties, true);
       } else {
         currentBlockCode = incomingCode;
