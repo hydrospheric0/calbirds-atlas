@@ -1124,6 +1124,7 @@
 
     // Confirm permission worked — mark as granted on first successful fix
     localStorage.setItem(LOC_PERM_KEY, 'granted');
+    locPermGate.setAttribute('hidden', 'hidden');
 
     updateLocMarker(lat, lng, accuracy);
 
@@ -1143,14 +1144,15 @@
 
   function onPositionError(err) {
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    locPermGate.removeAttribute('hidden');
     // Clear the stored grant so the gate shows again next load
     if (err.code === 1 /* PERMISSION_DENIED */) {
       localStorage.removeItem(LOC_PERM_KEY);
-      showPanelError('Location access denied. Tap the locate button to try again.');
+      showPanelError('Location access denied. Use Allow Location Access above to try again, or Skip to browse the map.');
     } else if (err.code === 2 /* POSITION_UNAVAILABLE */) {
-      showPanelError('Location unavailable. Check your device\u2019s GPS settings.');
+      showPanelError('Location unavailable. Check your device\u2019s GPS settings, then try again.');
     } else {
-      showPanelError('Location timed out. Tap the locate button to retry.');
+      showPanelError('Location timed out. Use Allow Location Access above to retry.');
     }
     console.warn('Geolocation error:', err.code, err.message);
   }
@@ -1259,7 +1261,6 @@
   const locPermGate = document.getElementById('locPermGate');
 
   document.getElementById('locGateAllowBtn').addEventListener('click', () => {
-    locPermGate.setAttribute('hidden', 'hidden');
     startTracking();
   });
 
@@ -1275,7 +1276,9 @@
   }
 
   const storedPerm = localStorage.getItem(LOC_PERM_KEY);
-  if (storedPerm === 'granted') {
+  if (storedPerm === 'skipped') {
+    locPermGate.setAttribute('hidden', 'hidden');
+  } else if (storedPerm === 'granted') {
     maybeAutoStart();
   } else if (storedPerm !== 'skipped' && navigator.permissions) {
     // Check if browser-level permission is already granted (e.g. user already allowed on a prior site)
@@ -1499,9 +1502,9 @@
         renderPanel(feat.properties, false);
       }
     } catch (err) {
-      // Don't wipe an already-loaded panel on a transient GPS-background fetch failure,
-      // but DO show the error if nothing is displayed yet (e.g. initial GPS fix fails).
-      if (!isCurrentLocation && currentBlockCode !== null) {
+      // Keep the currently displayed block visible on background GPS fetch failures,
+      // but always show an error for a user-initiated tap fetch.
+      if (isCurrentLocation && currentBlockCode !== null) {
         // silent — keep existing block visible
       } else {
         showPanelError('Could not load block data. Check connection.');
