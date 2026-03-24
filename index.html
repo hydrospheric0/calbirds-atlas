@@ -298,37 +298,61 @@
     /* ── MAP LEGEND BAR (between map and panel) ─────────── */
     #mapLegend {
       flex: 0 0 auto;
-      background: rgba(12,27,80,0.94);
+      background: rgba(12,27,80,0.96);
       border-top: 1px solid rgba(255,255,255,0.10);
       border-bottom: 1px solid rgba(0,150,136,0.4);
       display: none;
       flex-direction: row;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.25rem 0.75rem;
+      gap: 0;
+      padding: 0.22rem 0.75rem;
       overflow: hidden;
     }
     #mapLegend.visible { display: flex; }
     #mapLegendLabel {
-      font-size: 0.62rem;
+      font-size: 0.58rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      color: rgba(255,255,255,0.7);
+      color: rgba(255,255,255,0.65);
       white-space: pre-line;
       text-align: center;
       flex-shrink: 0;
+      padding-right: 0.55rem;
       min-width: 2.8rem;
-      line-height: 1.25;
+      line-height: 1.2;
     }
-    #mapLegendImg {
+    #mapLegendEntries {
+      display: flex;
+      flex-direction: row;
+      gap: 0;
       flex: 1 1 auto;
       min-width: 0;
-      max-height: 2rem;
+      align-items: stretch;
+    }
+    .legend-entry {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1 1 0;
+      min-width: 0;
+      gap: 0.18rem;
+    }
+    .legend-swatch {
       width: 100%;
-      object-fit: fill;
-      object-position: left center;
-      display: block;
+      height: 0.75rem;
+      border-radius: 0;
+    }
+    .legend-entry:first-child .legend-swatch { border-radius: 3px 0 0 3px; }
+    .legend-entry:last-child  .legend-swatch { border-radius: 0 3px 3px 0; }
+    .legend-lbl {
+      font-size: 0.5rem;
+      color: rgba(255,255,255,0.7);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1;
+      max-width: 100%;
     }
 
     .map-ctrl-btn {
@@ -761,9 +785,7 @@
 
   <div id="mapLegend" aria-label="Layer legend">
     <div id="mapLegendLabel"></div>
-    <img id="mapLegendImg" alt="legend" />
-  </div>
-
+    <div id="mapLegendEntries"></div>
   <div id="infoPanel">
     <div id="panelTopRow">
       <div id="panelNameArea"><span class="panel-hint" style="padding:0">Tap a block to see stats</span></div>
@@ -1005,9 +1027,55 @@
     bba_num_confirmed:        'Confirmed\nspp',
     bba_num_coded:            'Coded\nspp',
   };
-  // Note: \n in LAYER_NAMES is intentional — mapLegendLabel uses white-space:pre-line
 
-  const GWC_LEGEND_BASE = 'https://geowebcache.ornith.cornell.edu/geoserver/ows';
+  // Hardcoded legend entries per layer (light→dark, ascending value order)
+  const LEGEND_DATA = {
+    bba_effort_hrs_diurnal: [
+      { color: '#ffffd9', label: '>0–5' },
+      { color: '#c8e87a', label: '5–10' },
+      { color: '#7ecba8', label: '10–15' },
+      { color: '#42b0a8', label: '15–20' },
+      { color: '#2a8c8a', label: '20–30' },
+      { color: '#1a6278', label: '30–40' },
+      { color: '#0d2e52', label: '40+' },
+    ],
+    bba_effort_hrs_nocturnal: [
+      { color: '#ffffd9', label: '>0–2' },
+      { color: '#c8e87a', label: '2–5' },
+      { color: '#7ecba8', label: '5–8' },
+      { color: '#42b0a8', label: '8–12' },
+      { color: '#2a8c8a', label: '12–18' },
+      { color: '#1a6278', label: '18–25' },
+      { color: '#0d2e52', label: '25+' },
+    ],
+    bba_complete_checklists: [
+      { color: '#ffffd9', label: '1–5' },
+      { color: '#c8e87a', label: '5–10' },
+      { color: '#7ecba8', label: '10–25' },
+      { color: '#42b0a8', label: '25–50' },
+      { color: '#2a8c8a', label: '50–100' },
+      { color: '#1a6278', label: '100–200' },
+      { color: '#0d2e52', label: '200+' },
+    ],
+    bba_num_confirmed: [
+      { color: '#ffffd9', label: '1–5' },
+      { color: '#c8e87a', label: '5–15' },
+      { color: '#7ecba8', label: '15–30' },
+      { color: '#42b0a8', label: '30–50' },
+      { color: '#2a8c8a', label: '50–80' },
+      { color: '#1a6278', label: '80–120' },
+      { color: '#0d2e52', label: '120+' },
+    ],
+    bba_num_coded: [
+      { color: '#ffffd9', label: '1–10' },
+      { color: '#c8e87a', label: '10–25' },
+      { color: '#7ecba8', label: '25–50' },
+      { color: '#42b0a8', label: '50–80' },
+      { color: '#2a8c8a', label: '80–120' },
+      { color: '#1a6278', label: '120–180' },
+      { color: '#0d2e52', label: '180+' },
+    ],
+  };
 
   // Add default layers
   addEffortLayer('bba_effort_hrs_diurnal');
@@ -1131,18 +1199,14 @@
 
   function updateLegend(style) {
     const el = document.getElementById('mapLegend');
-    const img = document.getElementById('mapLegendImg');
     const lbl = document.getElementById('mapLegendLabel');
-    if (!style) { el.classList.remove('visible'); return; }
-    const params = new URLSearchParams({
-      service: 'WMS', version: '1.0.0', request: 'GetLegendGraphic',
-      format: 'image/png',
-      LAYER: 'clo:BBA_CA_EFFORT_MAP', STYLE: style,
-      width: '24', height: '16',
-      legend_options: 'fontColor:0xf8fafc;bgColor:0x0c1b50;borderColor:0x0c1b50;fontAntiAliasing:true;fontSize:9;layout:horizontal;forceLabels:on',
-    });
-    img.src = `${GWC_LEGEND_BASE}?${params.toString()}`;
+    const entries = document.getElementById('mapLegendEntries');
+    if (!style || !LEGEND_DATA[style]) { el.classList.remove('visible'); return; }
     lbl.textContent = LAYER_NAMES[style] || style;
+    const html = LEGEND_DATA[style].map(({ color, label }) =>
+      `<div class="legend-entry"><div class="legend-swatch" style="background:${color}"></div><span class="legend-lbl">${label}</span></div>`
+    ).join('');
+    entries.innerHTML = html;
     el.classList.add('visible');
   }
 
