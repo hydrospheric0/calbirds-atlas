@@ -55,14 +55,6 @@
       -webkit-overflow-scrolling: touch;
     }
 
-    #panelHeader {
-      display: flex;
-      align-items: baseline;
-      gap: 0.4em;
-      flex-shrink: 0;
-      min-width: 0;
-    }
-
     #panelBlockName {
       font-size: 0.88rem;
       font-weight: 700;
@@ -242,11 +234,20 @@
       opacity: 0.7;
     }
 
-    #panelToolbar {
+    #panelTopRow {
       display: flex;
       align-items: center;
-      justify-content: flex-end;
+      gap: 0.4rem;
       flex-shrink: 0;
+      min-width: 0;
+    }
+
+    #panelNameArea {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 0.4em;
     }
 
     #panelContent {
@@ -259,18 +260,18 @@
     }
 
     #overlaySelect {
-      background: #fff;
-      border: 1px solid rgba(0,0,0,0.14);
-      color: #1e293b;
+      background: var(--brand);
+      border: 1px solid rgba(255,255,255,0.22);
+      color: #f8fafc;
       border-radius: 6px;
-      padding: 0.17rem 0.35rem;
+      padding: 0.18rem 0.35rem;
       font-size: 0.68rem;
       font-family: inherit;
       cursor: pointer;
       flex-shrink: 0;
     }
 
-    #overlaySelect option { background: #fff; color: #1e293b; }
+    #overlaySelect option { background: var(--brand); color: #f8fafc; }
 
     /* ── MAP TOP-RIGHT CONTROLS ──────────────────────────── */
     .map-top-right {
@@ -624,6 +625,48 @@
     .info-defs dt { font-weight: 600; color: #0f172a; }
     .info-defs dd { color: #475569; margin: 0; }
 
+    .info-support-block {
+      display: grid;
+      justify-items: end;
+      gap: 0.35rem;
+      text-align: right;
+      margin-top: 0.25rem;
+    }
+
+    .info-support-label { font-weight: 600; }
+
+    .info-support-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      max-width: 100%;
+      text-decoration: none;
+    }
+
+    .info-support-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 2rem;
+      padding: 0.35rem 0.8rem;
+      border-radius: 999px;
+      border: 1px solid #d97706;
+      background: linear-gradient(180deg, #facc15, #f59e0b);
+      color: #422006;
+      font-size: 0.76rem;
+      font-weight: 800;
+      line-height: 1;
+      white-space: nowrap;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), 0 1px 3px rgba(15,23,42,0.16);
+    }
+
+    .info-fine {
+      margin: 0;
+      font-size: 0.72rem;
+      line-height: 1.4;
+      color: #64748b;
+    }
+
     /* ── SCALE BAR ──────────────────────────────────────────── */
     .leaflet-control-scale-line {
       border-color: rgba(12,27,80,0.45) !important;
@@ -681,7 +724,8 @@
   </div>
 
   <div id="infoPanel">
-    <div id="panelToolbar">
+    <div id="panelTopRow">
+      <div id="panelNameArea"><span class="panel-hint" style="padding:0">Tap a block to see stats</span></div>
       <select id="overlaySelect" aria-label="Select effort overlay">
         <option value="">No overlay</option>
         <option value="bba_effort_hrs_diurnal" selected>Diurnal hrs</option>
@@ -691,9 +735,7 @@
         <option value="bba_num_coded">Coded spp</option>
       </select>
     </div>
-    <div id="panelContent">
-      <div class="panel-hint">Tap a block on the map to see effort stats</div>
-    </div>
+    <div id="panelContent"></div>
   </div>
 </div>
 
@@ -745,7 +787,7 @@
   <div class="info-modal-panel" role="dialog" aria-modal="true" aria-labelledby="infoModalTitle">
     <button id="infoCloseBtn" class="info-modal-close" type="button" aria-label="Close">×</button>
     <h2 id="infoModalTitle">🐦 CA Bird Atlas</h2>
-    <p>An interactive effort map for the <a href="https://ebird.org/atlascalifornia" target="_blank" rel="noopener noreferrer">California Bird Atlas</a> (2021–2026), powered by eBird / Cornell Lab of Ornithology.</p>
+    <p>Designed to support the <a href="https://ebird.org/atlascalifornia" target="_blank" rel="noopener noreferrer">California Bird Atlas</a>, powered by eBird / Cornell Lab of Ornithology.</p>
     <h3>How to use</h3>
     <p>Tap any block on the map to see its effort statistics. Enable location to automatically track your current block while in the field.</p>
     <dl class="info-defs">
@@ -763,6 +805,22 @@
     </dl>
     <h3>Data</h3>
     <p>Effort data cached hourly from Cornell's GeoServer. Block boundaries © Cornell Lab / eBird.</p>
+    <h3>Enabling location on mobile</h3>
+    <dl class="info-defs">
+      <dt>Safari (iOS)</dt><dd>Settings → Privacy &amp; Security → Location Services → Safari → <em>While Using</em>. Also check Settings → Safari → Location → <em>Allow</em>.</dd>
+      <dt>Chrome (Android)</dt><dd>Tap the lock icon in the address bar → Permissions → Location → Allow. Or: Settings → Site Settings → Location → allow this site.</dd>
+      <dt>Firefox (Android)</dt><dd>Tap the lock icon → Edit Site Permissions → Location → Allow.</dd>
+      <dt>Samsung Internet</dt><dd>Tap the lock icon → Location → Allow while visiting.</dd>
+      <dt>All browsers</dt><dd>Your device-level Location must also be on: iOS Settings → Privacy &amp; Security → Location Services; Android Settings → Location → On.</dd>
+    </dl>
+    <p class="info-fine">This project is entirely self-funded and has no affiliation with eBird or the Cornell Lab of Ornithology. Consider <a href="https://give.birds.cornell.edu/page/145716/donate/" target="_blank" rel="noopener noreferrer">supporting eBird</a>.</p>
+    <p class="info-fine">© Metolius Research / Bart Wickel, 2026</p>
+    <div class="info-support-block">
+      <p class="info-support-label info-fine">Support development of this app through:</p>
+      <a class="info-support-link" href="https://buymeacoffee.com/bartg" target="_blank" rel="noopener noreferrer">
+        <span class="info-support-button">☕ Buy Me a Coffee</span>
+      </a>
+    </div>
   </div>
 </div>
 
@@ -1011,6 +1069,7 @@
 
   // ── PANEL & DOM REFS ─────────────────────────────────────────
   const panelContent = document.getElementById('panelContent');
+  const panelNameArea = document.getElementById('panelNameArea');
 
   // ── SETTINGS PANEL TOGGLE ─────────────────────────────────────
   const settingsPanel = document.getElementById('settingsPanel');
@@ -1174,19 +1233,21 @@
 
   // ── BOTTOM PANEL & BLOCK CLICK ───────────────────────────────
   function showPanelLoading() {
-    panelContent.innerHTML = '<div class="panel-loading"><div class="spinner"></div>Loading block data…</div>';
+    panelContent.innerHTML = '<div class="panel-loading"><div class="spinner"></div>Loading…</div>';
   }
 
   function showPanelHint() {
-    panelContent.innerHTML = '<div class="panel-hint">Tap a block on the map to see effort stats</div>';
+    panelNameArea.innerHTML = '<span class="panel-hint" style="padding:0">Tap a block to see stats</span>';
+    panelContent.innerHTML = '';
   }
 
   function showPanelError(msg) {
     const d = document.createElement('div');
     d.className = 'panel-hint';
-    d.style.color = 'rgba(255,120,120,0.8)';
+    d.style.cssText = 'color:rgba(255,120,120,0.8);padding:0';
     d.textContent = msg;
-    panelContent.replaceChildren(d);
+    panelNameArea.replaceChildren(d);
+    panelContent.innerHTML = '';
   }
 
   function escHtml(str) {
@@ -1219,11 +1280,8 @@
     const metaParts = [blockCounty ? escHtml(blockCounty) + ' Co.' : '', locBadge].filter(Boolean).join(' ');
     const metaSpan = metaParts ? `<span id="panelBlockMeta">${metaParts}</span>` : '';
 
+    panelNameArea.innerHTML = `<div id="panelBlockName">${escHtml(blockName)}${completeBadge}${priorityBadge}</div>${metaSpan}`;
     panelContent.innerHTML = `
-      <div id="panelHeader">
-        <div id="panelBlockName">${escHtml(blockName)}${completeBadge}${priorityBadge}</div>
-        ${metaSpan}
-      </div>
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-label">Diurnal hrs</div>
