@@ -295,6 +295,42 @@
       pointer-events: none;
     }
 
+    /* ── MAP LEGEND (top-left) ──────────────────────────── */
+    #mapLegend {
+      position: absolute;
+      top: 0.5rem;
+      left: 0.5rem;
+      z-index: 1050;
+      background: rgba(12,27,80,0.82);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 7px;
+      padding: 0.35rem 0.4rem 0.3rem;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.2rem;
+      min-width: 2.6rem;
+    }
+    #mapLegend.visible { display: flex; }
+    #mapLegendLabel {
+      font-size: 0.52rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: rgba(255,255,255,0.7);
+      text-align: center;
+      line-height: 1.3;
+      max-width: 3.5rem;
+    }
+    #mapLegendImg {
+      display: block;
+      max-width: 2.4rem;
+      height: auto;
+      border-radius: 3px;
+    }
+
     .map-ctrl-btn {
       background: rgba(12,27,80,0.88);
       border: 1px solid rgba(255,255,255,0.22);
@@ -712,6 +748,10 @@
   </header>
 
   <div id="mapEl">
+    <div id="mapLegend" aria-label="Layer legend">
+      <div id="mapLegendLabel"></div>
+      <img id="mapLegendImg" alt="legend" />
+    </div>
     <div class="map-top-right">
       <button id="settingsBtn" class="map-ctrl-btn" title="Layers &amp; settings" aria-label="Layers and settings">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -959,6 +999,7 @@
 
   // Add default layers
   addEffortLayer('bba_effort_hrs_diurnal');
+  updateLegend('bba_effort_hrs_diurnal');
   addBlockLayer();
   // Wait for map to be fully ready before loading zero effort layer
   map.whenReady(() => addZeroEffortLayer());
@@ -1076,6 +1117,34 @@
   // ── STAT TILE LAYER PICKER ──────────────────────────────────────
   let activeLayerStyle = 'bba_effort_hrs_diurnal';
 
+  const LAYER_NAMES = {
+    bba_effort_hrs_diurnal:   'Diurnal\nhrs',
+    bba_effort_hrs_nocturnal: 'Nocturnal\nhrs',
+    bba_complete_checklists:  'Complete\nlists',
+    bba_num_confirmed:        'Confirmed\nspp',
+    bba_num_coded:            'Coded\nspp',
+  };
+
+  const GWC_LEGEND_BASE = 'https://geowebcache.ornith.cornell.edu/geoserver/ows';
+
+  function updateLegend(style) {
+    const el = document.getElementById('mapLegend');
+    const img = document.getElementById('mapLegendImg');
+    const lbl = document.getElementById('mapLegendLabel');
+    if (!style) { el.classList.remove('visible'); return; }
+    const params = new URLSearchParams({
+      service: 'WMS', version: '1.0.0', request: 'GetLegendGraphic',
+      format: 'image/png',
+      LAYER: 'clo:BBA_CA_EFFORT_MAP', STYLE: style,
+      width: '16', height: '120',
+      legend_options: 'fontColor:0xf8fafc;bgColor:0x0c1b50;borderColor:0x0c1b50;fontAntiAliasing:true;fontSize:8',
+    });
+    img.src = `${GWC_LEGEND_BASE}?${params.toString()}`;
+    lbl.textContent = (LAYER_NAMES[style] || style).replace('\\n', '\n');
+    lbl.style.whiteSpace = 'pre-line';
+    el.classList.add('visible');
+  }
+
   function updateTileHighlights() {
     document.querySelectorAll('.stat-card[data-layer]').forEach((card) => {
       card.classList.toggle('layer-active', card.dataset.layer === activeLayerStyle);
@@ -1089,6 +1158,7 @@
     activeLayerStyle = style;
     addEffortLayer(style);
     updateTileHighlights();
+    updateLegend(style);
   });
 
   // ── BASEMAP SWITCHER ──────────────────────────────────────────
