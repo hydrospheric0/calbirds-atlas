@@ -259,19 +259,28 @@
       gap: 0.32rem;
     }
 
-    #overlaySelect {
-      background: var(--brand);
-      border: 1px solid rgba(255,255,255,0.22);
-      color: #f8fafc;
-      border-radius: 6px;
-      padding: 0.18rem 0.35rem;
-      font-size: 0.68rem;
-      font-family: inherit;
+    .stat-card[data-layer] {
       cursor: pointer;
-      flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.12s;
     }
 
-    #overlaySelect option { background: var(--brand); color: #f8fafc; }
+    .stat-card[data-layer]:active { background: #fffde7; }
+
+    .stat-card[data-layer].layer-active {
+      background: rgba(255, 230, 0, 0.22);
+      border-color: rgba(200, 170, 0, 0.4);
+    }
+
+    .layer-hint {
+      font-size: 0.58rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #94a3b8;
+      text-align: center;
+      flex-shrink: 0;
+      padding-bottom: 0.1rem;
+    }
 
     /* ── MAP TOP-RIGHT CONTROLS ──────────────────────────── */
     .map-top-right {
@@ -704,15 +713,6 @@
 
   <div id="mapEl">
     <div class="map-top-right">
-      <button id="locateBtn" class="map-ctrl-btn" title="Zoom to my location" aria-label="Zoom to my location">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-          <circle cx="12" cy="12" r="3.5"/>
-          <line x1="12" y1="2" x2="12" y2="6"/>
-          <line x1="12" y1="18" x2="12" y2="22"/>
-          <line x1="2" y1="12" x2="6" y2="12"/>
-          <line x1="18" y1="12" x2="22" y2="12"/>
-        </svg>
-      </button>
       <button id="settingsBtn" class="map-ctrl-btn" title="Layers &amp; settings" aria-label="Layers and settings">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="3" y1="6" x2="21" y2="6"/>
@@ -726,14 +726,6 @@
   <div id="infoPanel">
     <div id="panelTopRow">
       <div id="panelNameArea"><span class="panel-hint" style="padding:0">Tap a block to see stats</span></div>
-      <select id="overlaySelect" aria-label="Select effort overlay">
-        <option value="">No overlay</option>
-        <option value="bba_effort_hrs_diurnal" selected>Diurnal hrs</option>
-        <option value="bba_effort_hrs_nocturnal">Nocturnal hrs</option>
-        <option value="bba_complete_checklists">Checklists</option>
-        <option value="bba_num_confirmed">Confirmed spp</option>
-        <option value="bba_num_coded">Coded spp</option>
-      </select>
     </div>
     <div id="panelContent"></div>
   </div>
@@ -1009,8 +1001,6 @@
 
     // Confirm permission worked — mark as granted on first successful fix
     localStorage.setItem(LOC_PERM_KEY, 'granted');
-    // Keep button active (teal) to show tracking is live
-    document.getElementById('locateBtn').classList.add('active');
 
     updateLocMarker(lat, lng, accuracy);
 
@@ -1029,7 +1019,6 @@
   }
 
   function onPositionError(err) {
-    document.getElementById('locateBtn').classList.remove('active');
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
     // Clear the stored grant so the gate shows again next load
     if (err.code === 1 /* PERMISSION_DENIED */) {
@@ -1050,7 +1039,6 @@
     }
     if (watchId !== null) {
       // Already watching — re-center on current known position or next fix
-      document.getElementById('locateBtn').classList.add('active');
       if (lastKnownLat !== null) {
         map.setView([lastKnownLat, lastKnownLng], Math.max(map.getZoom(), 11), { animate: true });
       }
@@ -1059,13 +1047,10 @@
     firstFix = true;
     lastFetchLat = null;
     lastFetchLng = null;
-    document.getElementById('locateBtn').classList.add('active');
     showPanelLoading();
     watchId = navigator.geolocation.watchPosition(onPosition, onPositionError,
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
   }
-
-  document.getElementById('locateBtn').addEventListener('click', startTracking);
 
   // ── PANEL & DOM REFS ─────────────────────────────────────────
   const panelContent = document.getElementById('panelContent');
@@ -1088,9 +1073,22 @@
 
   settingsPanel.addEventListener('click', (e) => e.stopPropagation());
 
-  // ── OVERLAY PICKER ────────────────────────────────────────────
-  document.getElementById('overlaySelect').addEventListener('change', (e) => {
-    addEffortLayer(e.target.value);
+  // ── STAT TILE LAYER PICKER ──────────────────────────────────────
+  let activeLayerStyle = 'bba_effort_hrs_diurnal';
+
+  function updateTileHighlights() {
+    document.querySelectorAll('.stat-card[data-layer]').forEach((card) => {
+      card.classList.toggle('layer-active', card.dataset.layer === activeLayerStyle);
+    });
+  }
+
+  panelContent.addEventListener('click', (e) => {
+    const card = e.target.closest('.stat-card[data-layer]');
+    if (!card) return;
+    const style = card.dataset.layer;
+    activeLayerStyle = style;
+    addEffortLayer(style);
+    updateTileHighlights();
   });
 
   // ── BASEMAP SWITCHER ──────────────────────────────────────────
@@ -1283,23 +1281,23 @@
     panelNameArea.innerHTML = `<div id="panelBlockName">${escHtml(blockName)}${completeBadge}${priorityBadge}</div>${metaSpan}`;
     panelContent.innerHTML = `
       <div class="stats-grid">
-        <div class="stat-card">
+        <div class="stat-card" data-layer="bba_effort_hrs_diurnal">
           <div class="stat-label">Diurnal hrs</div>
           <div class="stat-value">${formatNum(props.diurnal_hours)}</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" data-layer="bba_effort_hrs_nocturnal">
           <div class="stat-label">Nocturnal hrs</div>
           <div class="stat-value">${formatNum(props.nocturnal_hours)}</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" data-layer="bba_complete_checklists">
           <div class="stat-label">Checklists</div>
           <div class="stat-value">${formatNum(props.num_complete, 0)}</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" data-layer="bba_num_confirmed">
           <div class="stat-label">Confirmed spp</div>
           <div class="stat-value">${formatNum(props.num_confirmed, 0)}</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" data-layer="bba_num_coded">
           <div class="stat-label">Coded spp</div>
           <div class="stat-value">${formatNum(props.num_coded, 0)}</div>
         </div>
@@ -1308,7 +1306,9 @@
           <div class="stat-value" style="font-size:0.72rem;font-weight:600;"><a class="ebird-link" style="margin:0" href="${escHtml(ebirdUrl)}" target="_blank" rel="noopener noreferrer">View ↗</a></div>
         </div>
       </div>
+      <div class="layer-hint">Tap tile to select layer</div>
     `;
+    updateTileHighlights();
   }
 
   // Block highlight layer (red outline around clicked block)
@@ -1341,7 +1341,7 @@
       const data = await res.json();
 
       if (!data.features || data.features.length === 0) {
-        // For GPS updates, only show the error if we have no block displayed yet
+        // Show error if nothing is loaded yet; otherwise silently ignore GPS drift outside a block
         if (!isCurrentLocation || currentBlockCode === null) {
           showPanelError('No atlas block at this location.');
         }
@@ -1362,8 +1362,11 @@
         renderPanel(feat.properties, false);
       }
     } catch (err) {
-      // Don't wipe the panel on a transient GPS-background fetch failure
-      if (!isCurrentLocation) {
+      // Don't wipe an already-loaded panel on a transient GPS-background fetch failure,
+      // but DO show the error if nothing is displayed yet (e.g. initial GPS fix fails).
+      if (!isCurrentLocation && currentBlockCode !== null) {
+        // silent — keep existing block visible
+      } else {
         showPanelError('Could not load block data. Check connection.');
       }
       console.error('Block fetch error:', err);
