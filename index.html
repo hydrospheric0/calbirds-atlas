@@ -1093,14 +1093,17 @@
 
   // ── STATEWIDE ZERO-EFFORT (preloaded) ─────────────────────────
   let zeroEffortEnabled = false;
-  let stateZeroEffortGeoJson = null;
+  let stateZeroEffortIds = null;
+  let allBlocksGeoJson = null;
   const ZERO_EFFORT_MIN_ZOOM = 8;
 
   function buildZeroEffortLayer() {
     if (zeroEffortLayer) return;
-    if (!stateZeroEffortGeoJson) return;
-    const features = (stateZeroEffortGeoJson.features || []).filter(
-      f => f.properties && Number(f.properties.num_complete) === 0
+    if (!stateZeroEffortIds || !Array.isArray(stateZeroEffortIds) || !allBlocksGeoJson) return;
+    
+    const zeroSet = new Set(stateZeroEffortIds);
+    const features = (allBlocksGeoJson.features || []).filter(
+      f => f.properties && zeroSet.has(f.properties.blck_cd)
     );
     if (!features.length) return;
     zeroEffortLayer = L.geoJSON({ type: 'FeatureCollection', features }, {
@@ -1111,7 +1114,7 @@
   }
 
   function updateZeroEffortVisibility() {
-    if (!zeroEffortEnabled || !stateZeroEffortGeoJson) {
+    if (!zeroEffortEnabled || !stateZeroEffortIds || !allBlocksGeoJson) {
       if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
       return;
     }
@@ -1197,19 +1200,20 @@
     const loader = document.getElementById('dataLoader');
     const results = await Promise.allSettled([
       cachedFetch('./data/block_names.json'),
-      cachedFetch('/api/zeroblocks?v=2'),
+      cachedFetch('/api/zeroblocks?v=3'),
       cachedFetch('./data/CA_counties_hires.json'),
+      cachedFetch('./data/ca_bba_blocks.geojson')
     ]);
     if (results[0].status === 'fulfilled') blockNames = results[0].value;
-    if (results[1].status === 'fulfilled') stateZeroEffortGeoJson = results[1].value;
+    if (results[1].status === 'fulfilled') stateZeroEffortIds = results[1].value;
     if (results[2].status === 'fulfilled') countyGeoJson = results[2].value;
+    if (results[3].status === 'fulfilled') allBlocksGeoJson = results[3].value;
 
     // Pre-build county coverage stats from preloaded data
-    if (blockNames && stateZeroEffortGeoJson) {
+    if (blockNames && stateZeroEffortIds && Array.isArray(stateZeroEffortIds)) {
       const data = emptyCountyCoverageMap();
       data.totalByCounty = buildCountyTotalsFromBlockNames();
-      (stateZeroEffortGeoJson.features || []).forEach((f) => {
-        const code = f?.properties?.block_code;
+      stateZeroEffortIds.forEach((code) => {
         if (!code || !blockNames[code]) return;
         const county = String(blockNames[code][1] || '').trim();
         if (county) data.zeroByCounty[county] = (data.zeroByCounty[county] || 0) + 1;
@@ -1542,20 +1546,18 @@
       const data = emptyCountyCoverageMap();
       data.totalByCounty = buildCountyTotalsFromBlockNames();
 
-      // Use preloaded statewide zero-effort data; fall back to API
-      let geojson = stateZeroEffortGeoJson;
-      if (!geojson) {
+      // Use preloaded statewide zero-effort ids; fall back to API
+      let zeroIds = stateZeroEffortIds;
+      if (!zeroIds) {
         try {
-          geojson = await cachedFetch('/api/zeroblocks?v=2');
-          stateZeroEffortGeoJson = geojson;
+          zeroIds = await cachedFetch('/api/zeroblocks?v=3');
+          stateZeroEffortIds = zeroIds;
         } catch (e) {
           console.warn('County zero-effort stats load failed:', e);
         }
       }
-      if (geojson) {
-        const features = Array.isArray(geojson.features) ? geojson.features : [];
-        features.forEach((feature) => {
-          const code = feature?.properties?.block_code;
+      if (zeroIds && Array.isArray(zeroIds)) {
+        zeroIds.forEach((code) => {
           if (!code || !blockNames || !blockNames[code]) return;
           const county = String(blockNames[code][1] || '').trim();
           if (!county) return;

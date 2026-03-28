@@ -1,4 +1,4 @@
-// Cloudflare Pages Function: returns all zero-effort CA atlas blocks as GeoJSON.
+// Cloudflare Pages Function: returns all zero-effort CA atlas block codes as a JSON array.
 // Fetches once from Cornell WFS and caches at the edge for 6 hours.
 
 const WFS_BASE = 'https://geowebcache.ornith.cornell.edu/geoserver/wfs';
@@ -20,8 +20,9 @@ export async function onRequestGet(context) {
   wfsUrl.searchParams.set('VERSION', '2.0.0');
   wfsUrl.searchParams.set('REQUEST', 'GetFeature');
   wfsUrl.searchParams.set('typeName', 'clo:BBA_CA_EFFORT_MAP');
-  wfsUrl.searchParams.set('count', '5000');
+  wfsUrl.searchParams.set('count', '10000');
   wfsUrl.searchParams.set('CQL_FILTER', cql);
+  wfsUrl.searchParams.set('propertyName', 'block_code');
   wfsUrl.searchParams.set('outputFormat', 'application/json');
 
   try {
@@ -37,9 +38,13 @@ export async function onRequestGet(context) {
       });
     }
 
-    // GeoServer WFS returns coordinates in correct GeoJSON [lng, lat] order already
     const geojson = await upstream.json();
-    return new Response(JSON.stringify(geojson), {
+    // Extract just the block codes into a simple array
+    const zeroBlocks = (geojson.features || [])
+      .map(f => f.properties && f.properties.block_code)
+      .filter(Boolean);
+
+    return new Response(JSON.stringify(zeroBlocks), {
       status: 200,
       headers: corsHeaders('application/json', requestOrigin),
     });
