@@ -76,11 +76,19 @@ export async function onRequestGet(context) {
   wfsUrl.searchParams.set('CQL_FILTER', cql);
   wfsUrl.searchParams.set('outputFormat', 'application/json');
 
+  const wfsController = new AbortController();
+  const wfsTid = setTimeout(() => wfsController.abort(), 25000);
   try {
-    const upstream = await fetch(wfsUrl.toString(), {
-      headers: { 'User-Agent': 'CalBirds-Atlas/1.0 (calbirds.org)' },
-      cf: { cacheTtl: 3600, cacheEverything: true },
-    });
+    let upstream;
+    try {
+      upstream = await fetch(wfsUrl.toString(), {
+        headers: { 'User-Agent': 'CalBirds-Atlas/1.0 (calbirds.org)' },
+        signal: wfsController.signal,
+        cf: { cacheTtl: 3600, cacheEverything: true },
+      });
+    } finally {
+      clearTimeout(wfsTid);
+    }
 
     if (!upstream.ok) {
       return new Response(JSON.stringify({ error: `Upstream error: ${upstream.status}` }), {
