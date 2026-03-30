@@ -1002,7 +1002,7 @@
   const ATLAS_CACHE = 'atlas-data-v1';
   const ATLAS_CACHE_TTL = 3 * 3600 * 1000; // 3 hours client-side
 
-  async function cachedFetch(url) {
+  async function cachedFetch(url, timeoutMs = 15000) {
     if ('caches' in window) {
       try {
         const cache = await caches.open(ATLAS_CACHE);
@@ -1013,7 +1013,14 @@
         }
       } catch (e) { /* fall through to network */ }
     }
-    const res = await fetch(url);
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), timeoutMs);
+    let res;
+    try {
+      res = await fetch(url, { signal: controller.signal });
+    } finally {
+      clearTimeout(tid);
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     if ('caches' in window) {
       try {
@@ -1092,30 +1099,74 @@
     blockLayer = null;
   }
 
-  // ── STATEWIDE ZERO-EFFORT (preloaded) ─────────────────────────
+  // ── NEARBY ZERO-EFFORT (location-based, ~100 km) ─────────────
+  // Fetches zero-effort blocks within 100 km of the map centre on demand.
+  // Only re-fetches when the centre shifts more than RE_FETCH_KM.
   let zeroEffortEnabled = false;
-  let stateZeroEffortIds = null;
-  let allBlocksGeoJson = null;
   const ZERO_EFFORT_MIN_ZOOM = 8;
+  const ZERO_BBOX_LAT = 0.9;   // ~100 km in latitude
+  const ZERO_BBOX_LNG = 1.13;  // ~100 km in longitude at CA latitude
+  const RE_FETCH_KM   = 50;    // re-fetch threshold
+  let zeroFetchCenterLat = null;
+  let zeroFetchCenterLng = null;
+  let zeroFetchInFlight  = false;
 
-  function buildZeroEffortLayer() {
-    if (zeroEffortLayer) return;
-    if (!stateZeroEffortIds || !Array.isArray(stateZeroEffortIds) || !allBlocksGeoJson) return;
-    
-    const zeroSet = new Set(stateZeroEffortIds);
-    const features = (allBlocksGeoJson.features || []).filter(
-      f => f.properties && zeroSet.has(f.properties.blck_cd)
-    );
-    if (!features.length) return;
-    zeroEffortLayer = L.geoJSON({ type: 'FeatureCollection', features }, {
-      pane: 'zeroEffortPane',
-      style: { color: '#a855f7', weight: 1.5, opacity: overlayOpacity, fillOpacity: 0 },
-      interactive: false,
-    });
+  function kmBetween(lat1, lng1, lat2, lng2) {
+    const R = 6371, toRad = x => x * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat/2)**2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  async function refreshZeroEffortLayer() {
+    if (!zeroEffortEnabled) return;
+    if (map.getZoom() < ZERO_EFFORT_MIN_ZOOM) {
+      if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
+      return;
+    }
+    const { lat: cLat, lng: cLng } = map.getCenter();
+    // Already have a recent layer close to this centre — just show it
+    if (zeroEffortLayer && zeroFetchCenterLat !== null &&
+        kmBetween(cLat, cLng, zeroFetchCenterLat, zeroFetchCenterLng) < RE_FETCH_KM) {
+      if (!map.hasLayer(zeroEffortLayer)) zeroEffortLayer.addTo(map);
+      return;
+    }
+    if (zeroFetchInFlight) return;
+    zeroFetchInFlight = true;
+    const minLat = (cLat - ZERO_BBOX_LAT).toFixed(4);
+    const maxLat = (cLat + ZERO_BBOX_LAT).toFixed(4);
+    const minLng = (cLng - ZERO_BBOX_LNG).toFixed(4);
+    const maxLng = (cLng + ZERO_BBOX_LNG).toFixed(4);
+    try {
+      const geojson = await cachedFetch(
+        `/api/nearbyblocks?bbox=${minLat},${minLng},${maxLat},${maxLng}&zeroOnly=1`, 20000
+      );
+      if (!zeroEffortEnabled) return;
+      if (zeroEffortLayer) {
+        if (map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
+        zeroEffortLayer = null;
+      }
+      const features = geojson.features || [];
+      if (features.length) {
+        zeroEffortLayer = L.geoJSON({ type: 'FeatureCollection', features }, {
+          pane: 'zeroEffortPane',
+          style: { color: '#a855f7', weight: 1.5, opacity: overlayOpacity, fillOpacity: 0 },
+          interactive: false,
+        });
+        if (map.getZoom() >= ZERO_EFFORT_MIN_ZOOM) zeroEffortLayer.addTo(map);
+      }
+      zeroFetchCenterLat = cLat;
+      zeroFetchCenterLng = cLng;
+    } catch (e) {
+      console.warn('Zero effort fetch failed:', e);
+    } finally {
+      zeroFetchInFlight = false;
+    }
   }
 
   function updateZeroEffortVisibility() {
-    if (!zeroEffortEnabled || !stateZeroEffortIds || !allBlocksGeoJson) {
+    if (!zeroEffortEnabled) {
       if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
       return;
     }
@@ -1123,13 +1174,12 @@
       if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
       return;
     }
-    buildZeroEffortLayer();
-    if (zeroEffortLayer && !map.hasLayer(zeroEffortLayer)) zeroEffortLayer.addTo(map);
+    refreshZeroEffortLayer();
   }
 
   function addZeroEffortLayer() {
     zeroEffortEnabled = true;
-    updateZeroEffortVisibility();
+    refreshZeroEffortLayer();
   }
 
   function removeZeroEffortLayer() {
@@ -1201,26 +1251,13 @@
     const loader = document.getElementById('dataLoader');
     const results = await Promise.allSettled([
       cachedFetch('./data/block_names.json'),
-      cachedFetch('/api/zeroblocks?v=3'),
       cachedFetch('./data/CA_counties_hires.json'),
-      cachedFetch('./data/ca_bba_blocks.geojson')
     ]);
     if (results[0].status === 'fulfilled') blockNames = results[0].value;
-    if (results[1].status === 'fulfilled') stateZeroEffortIds = results[1].value;
-    if (results[2].status === 'fulfilled') countyGeoJson = results[2].value;
-    if (results[3].status === 'fulfilled') allBlocksGeoJson = results[3].value;
+    if (results[1].status === 'fulfilled') countyGeoJson = results[1].value;
 
-    // Pre-build county coverage stats from preloaded data
-    if (blockNames && stateZeroEffortIds && Array.isArray(stateZeroEffortIds)) {
-      const data = emptyCountyCoverageMap();
-      data.totalByCounty = buildCountyTotalsFromBlockNames();
-      stateZeroEffortIds.forEach((code) => {
-        if (!code || !blockNames[code]) return;
-        const county = String(blockNames[code][1] || '').trim();
-        if (county) data.zeroByCounty[county] = (data.zeroByCounty[county] || 0) + 1;
-      });
-      countyCoverageByName = data;
-    }
+    // Build county totals for the block info panel (zero-effort % no longer statewide)
+    if (blockNames) countyCoverageByName = { totalByCounty: buildCountyTotalsFromBlockNames() };
 
     // Activate layers now that data is available
     updateZeroEffortVisibility();
@@ -1502,8 +1539,7 @@
 
   // ── BLOCK NAME LOOKUP ────────────────────────────────────────
   let blockNames = null;
-  let countyCoverageByName = null;
-  let countyCoveragePromise = null;
+  let countyCoverageByName = null; // { totalByCounty }
   let countyCoverageRenderGen = 0;
 
   async function ensureBlockNames() {
@@ -1522,10 +1558,6 @@
     return { name, county };
   }
 
-  function emptyCountyCoverageMap() {
-    return { totalByCounty: {}, zeroByCounty: {} };
-  }
-
   function buildCountyTotalsFromBlockNames() {
     const totals = {};
     if (!blockNames) return totals;
@@ -1538,82 +1570,18 @@
     return totals;
   }
 
-  async function loadCountyCoverageStats() {
-    if (countyCoverageByName) return countyCoverageByName;
-    if (countyCoveragePromise) return countyCoveragePromise;
-
-    countyCoveragePromise = (async () => {
-      await ensureBlockNames();
-      const data = emptyCountyCoverageMap();
-      data.totalByCounty = buildCountyTotalsFromBlockNames();
-
-      // Use preloaded statewide zero-effort ids; fall back to API
-      let zeroIds = stateZeroEffortIds;
-      if (!zeroIds) {
-        try {
-          zeroIds = await cachedFetch('/api/zeroblocks?v=3');
-          stateZeroEffortIds = zeroIds;
-        } catch (e) {
-          console.warn('County zero-effort stats load failed:', e);
-        }
-      }
-      if (zeroIds && Array.isArray(zeroIds)) {
-        zeroIds.forEach((code) => {
-          if (!code || !blockNames || !blockNames[code]) return;
-          const county = String(blockNames[code][1] || '').trim();
-          if (!county) return;
-          data.zeroByCounty[county] = (data.zeroByCounty[county] || 0) + 1;
-        });
-      }
-
-      countyCoverageByName = data;
-      return countyCoverageByName;
-    })();
-
-    return countyCoveragePromise;
-  }
-
-  function getCountyCoverage(county) {
-    if (!countyCoverageByName || !county) return null;
-    const key = String(county).trim();
-    if (!key) return null;
-    const total = countyCoverageByName.totalByCounty[key] || 0;
-    const zero = countyCoverageByName.zeroByCounty[key] || 0;
-    const pct = total > 0 ? (zero / total) * 100 : 0;
-    return { total, zero, pct };
-  }
-
   function updateCountyCoverageTile(county) {
     const tileEl = document.getElementById('countyCoverageTile');
     if (!tileEl) return;
-
-    const renderGen = ++countyCoverageRenderGen;
     const countyName = String(county || '').trim();
     if (!countyName) {
-      tileEl.innerHTML = '<div class="stat-label">County zero effort</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
+      tileEl.innerHTML = '<div class="stat-label">County blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
       return;
     }
-
-    tileEl.innerHTML = '<div class="stat-label">County zero effort</div><div class="stat-value">…</div><div class="stat-subvalue">Loading county summary</div>';
-
-    loadCountyCoverageStats().then(() => {
-      if (renderGen !== countyCoverageRenderGen) return;
-      const stats = getCountyCoverage(countyName);
-      if (!stats || stats.total <= 0) {
-        tileEl.innerHTML = `<div class="stat-label">County zero effort</div><div class="stat-value">—</div><div class="stat-subvalue">${escHtml(countyName)} county</div>`;
-        return;
-      }
-
-      const pctText = `${stats.pct.toFixed(1)}%`;
-      tileEl.innerHTML = `
-        <div class="stat-label">County zero effort</div>
-        <div class="stat-value">${formatNum(stats.zero, 0)}<span class="stat-unit">/ ${formatNum(stats.total, 0)}</span></div>
-        <div class="stat-subvalue">${pctText} of ${escHtml(countyName)} blocks</div>
-      `;
-    }).catch(() => {
-      if (renderGen !== countyCoverageRenderGen) return;
-      tileEl.innerHTML = `<div class="stat-label">County zero effort</div><div class="stat-value">—</div><div class="stat-subvalue">${escHtml(countyName)} county</div>`;
-    });
+    const total = countyCoverageByName?.totalByCounty?.[countyName] || 0;
+    tileEl.innerHTML = total > 0
+      ? `<div class="stat-label">County blocks</div><div class="stat-value">${formatNum(total, 0)}</div><div class="stat-subvalue">${escHtml(countyName)} county</div>`
+      : `<div class="stat-label">County blocks</div><div class="stat-value">—</div><div class="stat-subvalue">${escHtml(countyName)} county</div>`;
   }
 
   // ── BOTTOM PANEL & BLOCK CLICK ───────────────────────────────
@@ -1693,9 +1661,9 @@
           <div class="stat-value" style="font-size:0.72rem;font-weight:600;"><a class="ebird-link" style="margin:0" href="${escHtml(ebirdUrl)}" target="_blank" rel="noopener noreferrer">View ↗</a></div>
         </div>
         <div class="stat-card" id="countyCoverageTile">
-          <div class="stat-label">County zero effort</div>
+          <div class="stat-label">County blocks</div>
           <div class="stat-value">…</div>
-          <div class="stat-subvalue">Loading county summary</div>
+          <div class="stat-subvalue">Loading</div>
         </div>
       </div>
       <div class="layer-hint">Tap tile to select layer</div>

@@ -71,8 +71,8 @@ export async function onRequestGet(context) {
   wfsUrl.searchParams.set('VERSION', '2.0.0');
   wfsUrl.searchParams.set('REQUEST', 'GetFeature');
   wfsUrl.searchParams.set('typeName', 'clo:BBA_CA_EFFORT_MAP');
-  // zeroOnly queries return far fewer features per bbox — use a higher cap
-  wfsUrl.searchParams.set('count', zeroOnly ? '2000' : '500');
+  // zeroOnly queries can cover ~100 km radius — use a higher cap
+  wfsUrl.searchParams.set('count', zeroOnly ? '5000' : '500');
   wfsUrl.searchParams.set('CQL_FILTER', cql);
   wfsUrl.searchParams.set('outputFormat', 'application/json');
 
