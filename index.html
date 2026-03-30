@@ -1100,8 +1100,8 @@
   }
 
   // ── NEARBY ZERO-EFFORT (location-based, ~100 km) ─────────────
-  // Fetches zero-effort blocks within 100 km of the map centre on demand.
-  // Only re-fetches when the centre shifts more than RE_FETCH_KM.
+  // Fetch is kicked off eagerly on load so the layer is ready when the user
+  // zooms in. Re-fetches only when the centre shifts more than RE_FETCH_KM.
   let zeroEffortEnabled = false;
   const ZERO_EFFORT_MIN_ZOOM = 8;
   const ZERO_BBOX_LAT = 0.9;   // ~100 km in latitude
@@ -1119,19 +1119,9 @@
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-  async function refreshZeroEffortLayer() {
-    if (!zeroEffortEnabled) return;
-    if (map.getZoom() < ZERO_EFFORT_MIN_ZOOM) {
-      if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
-      return;
-    }
-    const { lat: cLat, lng: cLng } = map.getCenter();
-    // Already have a recent layer close to this centre — just show it
-    if (zeroEffortLayer && zeroFetchCenterLat !== null &&
-        kmBetween(cLat, cLng, zeroFetchCenterLat, zeroFetchCenterLng) < RE_FETCH_KM) {
-      if (!map.hasLayer(zeroEffortLayer)) zeroEffortLayer.addTo(map);
-      return;
-    }
+  // Fetch + build layer for a centre point. Does NOT gate on zoom level so it
+  // can be called eagerly on load. Calls updateZeroEffortVisibility when done.
+  async function fetchZeroEffortForCenter(cLat, cLng) {
     if (zeroFetchInFlight) return;
     zeroFetchInFlight = true;
     const minLat = (cLat - ZERO_BBOX_LAT).toFixed(4);
@@ -1142,7 +1132,6 @@
       const geojson = await cachedFetch(
         `/api/nearbyblocks?bbox=${minLat},${minLng},${maxLat},${maxLng}&zeroOnly=1`, 20000
       );
-      if (!zeroEffortEnabled) return;
       if (zeroEffortLayer) {
         if (map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
         zeroEffortLayer = null;
@@ -1154,10 +1143,10 @@
           style: { color: '#a855f7', weight: 1.5, opacity: overlayOpacity, fillOpacity: 0 },
           interactive: false,
         });
-        if (map.getZoom() >= ZERO_EFFORT_MIN_ZOOM) zeroEffortLayer.addTo(map);
       }
       zeroFetchCenterLat = cLat;
       zeroFetchCenterLng = cLng;
+      updateZeroEffortVisibility();
     } catch (e) {
       console.warn('Zero effort fetch failed:', e);
     } finally {
@@ -1165,16 +1154,31 @@
     }
   }
 
+  // Show or hide the already-fetched layer based on current state/zoom.
+  // Triggers a fetch if no data yet.
   function updateZeroEffortVisibility() {
-    if (!zeroEffortEnabled) {
+    if (!zeroEffortEnabled || map.getZoom() < ZERO_EFFORT_MIN_ZOOM) {
       if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
       return;
     }
-    if (map.getZoom() < ZERO_EFFORT_MIN_ZOOM) {
-      if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
+    if (zeroEffortLayer) {
+      if (!map.hasLayer(zeroEffortLayer)) zeroEffortLayer.addTo(map);
       return;
     }
-    refreshZeroEffortLayer();
+    // Data not yet available — fetch now
+    const { lat: cLat, lng: cLng } = map.getCenter();
+    fetchZeroEffortForCenter(cLat, cLng);
+  }
+
+  // Called on moveend/zoomend: re-fetch if centre has drifted far enough.
+  function refreshZeroEffortLayer() {
+    const { lat: cLat, lng: cLng } = map.getCenter();
+    if (zeroFetchCenterLat !== null &&
+        kmBetween(cLat, cLng, zeroFetchCenterLat, zeroFetchCenterLng) < RE_FETCH_KM) {
+      updateZeroEffortVisibility();
+      return;
+    }
+    fetchZeroEffortForCenter(cLat, cLng);
   }
 
   function addZeroEffortLayer() {
@@ -1187,7 +1191,10 @@
     if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
   }
 
-  map.on('moveend zoomend', updateZeroEffortVisibility);
+  map.on('moveend zoomend', () => {
+    if (!zeroEffortEnabled) return;
+    refreshZeroEffortLayer();
+  });
 
   const LAYER_NAMES = {
     bba_effort_hrs_diurnal:   'Diurnal\nhrs',
@@ -1256,8 +1263,15 @@
     if (results[0].status === 'fulfilled') blockNames = results[0].value;
     if (results[1].status === 'fulfilled') countyGeoJson = results[1].value;
 
-    // Build county totals for the block info panel (zero-effort % no longer statewide)
+    // Build county totals for the block info panel
     if (blockNames) countyCoverageByName = { totalByCounty: buildCountyTotalsFromBlockNames() };
+
+    // Eagerly pre-fetch zero-effort blocks for the initial map centre so
+    // the layer is ready the moment the user zooms in, with no extra delay.
+    if (zeroEffortEnabled) {
+      const { lat, lng } = map.getCenter();
+      fetchZeroEffortForCenter(lat, lng);
+    }
 
     // Activate layers now that data is available
     updateZeroEffortVisibility();
