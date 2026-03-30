@@ -1099,38 +1099,29 @@
     blockLayer = null;
   }
 
-  // ── NEARBY ZERO-EFFORT (location-based, ~100 km) ─────────────
-  // Fetch is kicked off eagerly on load so the layer is ready when the user
-  // zooms in. Re-fetches only when the centre shifts more than RE_FETCH_KM.
+  // ── NEARBY ZERO-EFFORT (viewport-based) ──────────────────────
+  // Fetches zero-effort blocks for the current map viewport when zoom >= 8.
+  // Uses actual map bounds (not a fixed radius) so the WFS query stays small
+  // and fast. Re-fetches when the viewport moves outside the cached bbox.
   let zeroEffortEnabled = false;
   const ZERO_EFFORT_MIN_ZOOM = 8;
-  const ZERO_BBOX_LAT = 0.9;   // ~100 km in latitude
-  const ZERO_BBOX_LNG = 1.13;  // ~100 km in longitude at CA latitude
-  const RE_FETCH_KM   = 50;    // re-fetch threshold
-  let zeroFetchCenterLat = null;
-  let zeroFetchCenterLng = null;
+  let zeroFetchedBounds = null;   // L.LatLngBounds of the last successful fetch
   let zeroFetchInFlight  = false;
 
-  function kmBetween(lat1, lng1, lat2, lng2) {
-    const R = 6371, toRad = x => x * Math.PI / 180;
-    const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
-    const a = Math.sin(dLat/2)**2 +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  }
-
-  // Fetch + build layer for a centre point. Does NOT gate on zoom level so it
-  // can be called eagerly on load. Calls updateZeroEffortVisibility when done.
-  async function fetchZeroEffortForCenter(cLat, cLng) {
+  async function fetchZeroEffortForViewport() {
     if (zeroFetchInFlight) return;
+    if (map.getZoom() < ZERO_EFFORT_MIN_ZOOM) return;
     zeroFetchInFlight = true;
-    const minLat = (cLat - ZERO_BBOX_LAT).toFixed(4);
-    const maxLat = (cLat + ZERO_BBOX_LAT).toFixed(4);
-    const minLng = (cLng - ZERO_BBOX_LNG).toFixed(4);
-    const maxLng = (cLng + ZERO_BBOX_LNG).toFixed(4);
+
+    const b = map.getBounds().pad(0.2); // 20% padding so panning slightly doesn't re-fetch
+    const minLat = b.getSouth().toFixed(4);
+    const maxLat = b.getNorth().toFixed(4);
+    const minLng = b.getWest().toFixed(4);
+    const maxLng = b.getEast().toFixed(4);
+
     try {
       const geojson = await cachedFetch(
-        `/api/nearbyblocks?bbox=${minLat},${minLng},${maxLat},${maxLng}&zeroOnly=1`, 20000
+        `/api/nearbyblocks?bbox=${minLat},${minLng},${maxLat},${maxLng}&zeroOnly=1`, 30000
       );
       if (zeroEffortLayer) {
         if (map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
@@ -1144,48 +1135,32 @@
           interactive: false,
         });
       }
-      zeroFetchCenterLat = cLat;
-      zeroFetchCenterLng = cLng;
+      zeroFetchedBounds = b;
       updateZeroEffortVisibility();
     } catch (e) {
-      console.warn('Zero effort fetch failed:', e);
+      console.warn('Zero effort fetch failed:', e.message);
     } finally {
       zeroFetchInFlight = false;
     }
   }
 
-  // Show or hide the already-fetched layer based on current state/zoom.
-  // Triggers a fetch if no data yet and zoom is in range.
   function updateZeroEffortVisibility() {
     if (!zeroEffortEnabled || map.getZoom() < ZERO_EFFORT_MIN_ZOOM) {
       if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
       return;
     }
-    if (zeroEffortLayer) {
+    // Have data and viewport is still within the fetched bounds — just show it
+    if (zeroEffortLayer && zeroFetchedBounds && zeroFetchedBounds.contains(map.getBounds())) {
       if (!map.hasLayer(zeroEffortLayer)) zeroEffortLayer.addTo(map);
       return;
     }
-    // Zoomed in but no data yet (pre-fetch still in-flight or failed) — fetch now
-    if (!zeroFetchInFlight) {
-      const { lat: cLat, lng: cLng } = map.getCenter();
-      fetchZeroEffortForCenter(cLat, cLng);
-    }
-  }
-
-  // Called on moveend/zoomend: re-fetch if centre has drifted far enough.
-  function refreshZeroEffortLayer() {
-    const { lat: cLat, lng: cLng } = map.getCenter();
-    if (zeroFetchCenterLat !== null &&
-        kmBetween(cLat, cLng, zeroFetchCenterLat, zeroFetchCenterLng) < RE_FETCH_KM) {
-      updateZeroEffortVisibility();
-      return;
-    }
-    fetchZeroEffortForCenter(cLat, cLng);
+    // Need fresh data
+    fetchZeroEffortForViewport();
   }
 
   function addZeroEffortLayer() {
     zeroEffortEnabled = true;
-    refreshZeroEffortLayer();
+    updateZeroEffortVisibility();
   }
 
   function removeZeroEffortLayer() {
@@ -1195,7 +1170,7 @@
 
   map.on('moveend zoomend', () => {
     if (!zeroEffortEnabled) return;
-    refreshZeroEffortLayer();
+    updateZeroEffortVisibility();
   });
 
   const LAYER_NAMES = {
@@ -1329,9 +1304,6 @@
     if (firstFix) {
       map.setView([lat, lng], 11, { animate: true });
       firstFix = false;
-      // Pre-fetch zero-effort blocks centred on the user's actual location
-      // (much more useful than the static default map centre).
-      if (zeroEffortEnabled) fetchZeroEffortForCenter(lat, lng);
     }
 
     // Re-fetch block only if moved > 250m (avoids constant fetches from GPS drift)
