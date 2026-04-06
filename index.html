@@ -865,7 +865,7 @@
     <div id="mapQuickLegend" aria-label="Map key">
       <div class="map-quick-legend-item">
         <span class="map-quick-legend-swatch zero-effort" aria-hidden="true"></span>
-        <span>Zero effort block</span>
+        <span id="zeroLegendText">Zero effort · loading…</span>
       </div>
       <div class="map-quick-legend-item">
         <span class="map-quick-legend-swatch active-block" aria-hidden="true"></span>
@@ -928,7 +928,7 @@
       </label>
     </div>
     <div class="setting-row" style="margin-top:0.45rem">
-      <span>Zero effort blocks</span>
+      <span>Zero effort (nearby)</span>
       <label class="toggle">
         <input type="checkbox" id="zeroEffortToggle" checked />
         <span class="toggle-track"></span>
@@ -962,7 +962,7 @@
     <dl class="info-defs">
       <dt>Block outlines</dt><dd>Atlas block boundaries</dd>
       <dt>County outlines</dt><dd>County boundaries (visible at zoom ≥ 10)</dd>
-      <dt>Zero effort</dt><dd>Purple outlines — blocks with no checklists yet</dd>
+      <dt>Zero effort</dt><dd>Purple outlines — nearby blocks with no checklists yet (loads as you pan)</dd>
     </dl>
     <h3>Data</h3>
     <p>Effort data cached hourly from Cornell's GeoServer. Block boundaries © Cornell Lab / eBird.</p>
@@ -1101,19 +1101,61 @@
 
   // ── NEARBY ZERO-EFFORT (viewport-based) ──────────────────────
   // Fetches zero-effort blocks for the current map viewport when zoom >= 8.
-  // Uses actual map bounds (not a fixed radius) so the WFS query stays small
-  // and fast. Re-fetches when the viewport moves outside the cached bbox.
+  // Accumulates features across pans so blocks remain visible when scrolling
+  // back. Re-fetches when the viewport moves outside the last-fetched bbox.
   let zeroEffortEnabled = false;
   const ZERO_EFFORT_MIN_ZOOM = 8;
   let zeroFetchedBounds = null;   // L.LatLngBounds of the last successful fetch
   let zeroFetchInFlight  = false;
+  let zeroFetchQueued    = false;  // viewport changed during an in-flight fetch
+  let zeroFeatureMap     = new Map(); // block_code → GeoJSON feature (accumulated)
+
+  function updateZeroLegendText() {
+    const el = document.getElementById('zeroLegendText');
+    if (!el) return;
+    if (!zeroEffortEnabled) { el.textContent = 'Zero effort (off)'; return; }
+    if (map.getZoom() < ZERO_EFFORT_MIN_ZOOM) {
+      el.textContent = 'Zero effort — zoom in';
+      return;
+    }
+    const n = zeroFeatureMap.size;
+    if (zeroFetchInFlight && n === 0) {
+      el.textContent = 'Zero effort · loading\u2026';
+    } else if (n > 0) {
+      el.textContent = 'Zero effort · ' + n + ' nearby';
+    } else {
+      el.textContent = 'Zero effort · none found';
+    }
+  }
+
+  function rebuildZeroEffortLayer() {
+    if (zeroEffortLayer) {
+      if (map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
+      zeroEffortLayer = null;
+    }
+    if (zeroFeatureMap.size === 0) { updateZeroLegendText(); return; }
+    zeroEffortLayer = L.geoJSON({
+      type: 'FeatureCollection',
+      features: Array.from(zeroFeatureMap.values()),
+    }, {
+      pane: 'zeroEffortPane',
+      style: { color: '#a855f7', weight: 1.5, opacity: overlayOpacity, fillOpacity: 0 },
+      interactive: false,
+    });
+    if (zeroEffortEnabled && map.getZoom() >= ZERO_EFFORT_MIN_ZOOM) {
+      zeroEffortLayer.addTo(map);
+    }
+    updateZeroLegendText();
+  }
 
   async function fetchZeroEffortForViewport() {
-    if (zeroFetchInFlight) return;
+    if (zeroFetchInFlight) { zeroFetchQueued = true; return; }
     if (map.getZoom() < ZERO_EFFORT_MIN_ZOOM) return;
     zeroFetchInFlight = true;
+    zeroFetchQueued = false;
+    updateZeroLegendText();
 
-    const b = map.getBounds().pad(0.2); // 20% padding so panning slightly doesn't re-fetch
+    const b = map.getBounds().pad(0.3); // 30% padding so small pans don't re-fetch
     const minLat = b.getSouth().toFixed(4);
     const maxLat = b.getNorth().toFixed(4);
     const minLng = b.getWest().toFixed(4);
@@ -1123,30 +1165,30 @@
       const geojson = await cachedFetch(
         `/api/nearbyblocks?bbox=${minLat},${minLng},${maxLat},${maxLng}&zeroOnly=1`, 30000
       );
-      if (zeroEffortLayer) {
-        if (map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
-        zeroEffortLayer = null;
-      }
       const features = geojson.features || [];
-      if (features.length) {
-        zeroEffortLayer = L.geoJSON({ type: 'FeatureCollection', features }, {
-          pane: 'zeroEffortPane',
-          style: { color: '#a855f7', weight: 1.5, opacity: overlayOpacity, fillOpacity: 0 },
-          interactive: false,
-        });
+      // Accumulate — dedup by block_code so panning back doesn't duplicate
+      for (const f of features) {
+        const code = f.properties?.block_code || f.id;
+        if (code) zeroFeatureMap.set(code, f);
       }
       zeroFetchedBounds = b;
-      updateZeroEffortVisibility();
+      rebuildZeroEffortLayer();
     } catch (e) {
       console.warn('Zero effort fetch failed:', e.message);
     } finally {
       zeroFetchInFlight = false;
+      // If the viewport moved while this fetch was running, fire again
+      if (zeroFetchQueued) {
+        zeroFetchQueued = false;
+        updateZeroEffortVisibility();
+      }
     }
   }
 
   function updateZeroEffortVisibility() {
     if (!zeroEffortEnabled || map.getZoom() < ZERO_EFFORT_MIN_ZOOM) {
       if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
+      updateZeroLegendText();
       return;
     }
     // Have data and viewport is still within the fetched bounds — just show it
@@ -1154,7 +1196,7 @@
       if (!map.hasLayer(zeroEffortLayer)) zeroEffortLayer.addTo(map);
       return;
     }
-    // Need fresh data
+    // Need fresh data for the new viewport
     fetchZeroEffortForViewport();
   }
 
@@ -1166,6 +1208,7 @@
   function removeZeroEffortLayer() {
     zeroEffortEnabled = false;
     if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
+    updateZeroLegendText();
   }
 
   map.on('moveend zoomend', () => {
