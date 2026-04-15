@@ -351,11 +351,18 @@
     }
 
       /* ── MAP QUICK LEGEND (top-left) ────────────────────── */
-      #mapQuickLegend {
+      #mapLegendStack {
         position: absolute;
         top: 0.5rem;
         left: 0.5rem;
         z-index: 1050;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.38rem;
+        pointer-events: none;
+      }
+      #mapQuickLegend {
         display: flex;
         flex-direction: column;
         gap: 0.28rem;
@@ -366,7 +373,6 @@
         box-shadow: 0 2px 6px rgba(0,0,0,0.28);
         backdrop-filter: blur(6px);
         -webkit-backdrop-filter: blur(6px);
-        pointer-events: none;
       }
       .map-quick-legend-item {
         display: flex;
@@ -377,9 +383,6 @@
         font-weight: 600;
         line-height: 1;
         white-space: nowrap;
-      }
-      .map-quick-legend-item.with-detail {
-        align-items: flex-start;
       }
       .map-quick-legend-swatch {
         width: 0.72rem;
@@ -398,17 +401,41 @@
         border: 2px solid #cbd5e1;
         background: transparent;
       }
-      .map-quick-legend-copy {
+      #mapProgressBubble {
         display: flex;
         flex-direction: column;
-        gap: 0.1rem;
-        min-width: 0;
+        gap: 0.08rem;
+        padding: 0.5rem 0.62rem 0.52rem;
+        border-radius: 12px;
+        background: rgba(248,250,252,0.95);
+        border: 1px solid rgba(12,27,80,0.14);
+        box-shadow: 0 4px 16px rgba(15,23,42,0.18);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        min-width: 7.2rem;
       }
-      .map-quick-legend-detail {
-        font-size: 0.56rem;
-        font-weight: 500;
-        color: rgba(248,250,252,0.72);
+      #mapProgressBubble[hidden] {
+        display: none;
+      }
+      .progress-bubble-label {
+        font-size: 0.54rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #64748b;
         line-height: 1;
+      }
+      .progress-bubble-value {
+        font-size: 0.94rem;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1.05;
+      }
+      .progress-bubble-meta {
+        font-size: 0.62rem;
+        font-weight: 600;
+        color: #475569;
+        line-height: 1.1;
       }
 
     /* ── MAP TOP-RIGHT CONTROLS ──────────────────────────── */
@@ -942,21 +969,25 @@
   </header>
 
   <div id="mapEl">
-    <div id="mapQuickLegend" aria-label="Map key">
-      <div class="map-quick-legend-item with-detail">
-        <span class="map-quick-legend-swatch zero-effort" aria-hidden="true"></span>
-        <span class="map-quick-legend-copy">
+    <div id="mapLegendStack">
+      <div id="mapQuickLegend" aria-label="Map key">
+        <div class="map-quick-legend-item">
+          <span class="map-quick-legend-swatch zero-effort" aria-hidden="true"></span>
           <span id="zeroLegendText">Zero effort · loading…</span>
-          <span class="map-quick-legend-detail" id="zeroLegendDetail"></span>
-        </span>
+        </div>
+        <div class="map-quick-legend-item">
+          <span class="map-quick-legend-swatch active-block" aria-hidden="true"></span>
+          <span>Active block</span>
+        </div>
+        <div class="map-quick-legend-item">
+          <span class="map-quick-legend-swatch hotspot" aria-hidden="true"></span>
+          <span>Hotspots · z10+</span>
+        </div>
       </div>
-      <div class="map-quick-legend-item">
-        <span class="map-quick-legend-swatch active-block" aria-hidden="true"></span>
-        <span>Active block</span>
-      </div>
-      <div class="map-quick-legend-item">
-        <span class="map-quick-legend-swatch hotspot" aria-hidden="true"></span>
-        <span>Hotspots · z10+</span>
+      <div id="mapProgressBubble" aria-live="polite" hidden>
+        <span class="progress-bubble-label">Progress</span>
+        <span class="progress-bubble-value" id="progressBubbleValue">… / …</span>
+        <span class="progress-bubble-meta">blocks with data</span>
       </div>
     </div>
     <div class="map-top-right">
@@ -1482,19 +1513,8 @@
 
   function updateZeroLegendText() {
     const el = document.getElementById('zeroLegendText');
-    const detailEl = document.getElementById('zeroLegendDetail');
     if (!el) return;
-    const stateTotal = countyCoverageByName?.stateTotal || 0;
-    const stateZeroTotal = countyCoverageByName?.stateZeroTotal;
-    if (detailEl) {
-      if (stateTotal && Number.isFinite(stateZeroTotal)) {
-        detailEl.textContent = `${formatNum(stateZeroTotal, 0)} / ${formatNum(stateTotal, 0)} statewide`;
-      } else if (stateTotal) {
-        detailEl.textContent = `… / ${formatNum(stateTotal, 0)} statewide`;
-      } else {
-        detailEl.textContent = '';
-      }
-    }
+    updateProgressBubble();
     if (!zeroEffortEnabled) { el.textContent = 'Zero effort (off)'; return; }
     if (map.getZoom() < ZERO_EFFORT_MIN_ZOOM) {
       el.textContent = 'Zero effort — zoom in';
@@ -1509,6 +1529,27 @@
       el.textContent = 'Zero effort · ' + n + ' nearby';
     } else {
       el.textContent = 'Zero effort · none found';
+    }
+  }
+
+  function updateProgressBubble() {
+    const bubbleEl = document.getElementById('mapProgressBubble');
+    const valueEl = document.getElementById('progressBubbleValue');
+    if (!bubbleEl || !valueEl) return;
+
+    const stateTotal = countyCoverageByName?.stateTotal || 0;
+    const stateZeroTotal = countyCoverageByName?.stateZeroTotal;
+    if (!stateTotal) {
+      bubbleEl.hidden = true;
+      return;
+    }
+
+    bubbleEl.hidden = false;
+    if (Number.isFinite(stateZeroTotal)) {
+      const blocksWithData = Math.max(0, stateTotal - stateZeroTotal);
+      valueEl.textContent = `${formatNum(blocksWithData, 0)} / ${formatNum(stateTotal, 0)}`;
+    } else {
+      valueEl.textContent = `… / ${formatNum(stateTotal, 0)}`;
     }
   }
 
