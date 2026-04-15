@@ -88,6 +88,21 @@
       padding: 0.28rem 0.4rem;
     }
 
+    .stat-card-link {
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.12s, border-color 0.12s;
+    }
+
+    .stat-card-link:hover {
+      background: rgba(8,145,178,0.06);
+      border-color: rgba(8,145,178,0.18);
+    }
+
+    .stat-card-link:active {
+      background: rgba(8,145,178,0.12);
+    }
+
     .stat-label {
       font-size: 0.58rem;
       font-weight: 600;
@@ -106,6 +121,10 @@
 
     .stat-card-unmapped .stat-value {
       color: #a855f7;
+    }
+
+    .stat-card-hotspots .stat-value {
+      color: #d97706;
     }
 
     .stat-unit {
@@ -1122,6 +1141,8 @@
   const HOTSPOT_PAD = 0.15;
   let hotspotRows = null;
   let hotspotRowsPromise = null;
+  let hotspotCountRenderToken = 0;
+  const hotspotCountByBlockCode = new Map();
 
   function hotspotRadius(species) {
     const count = Number(species) || 0;
@@ -1180,6 +1201,129 @@
       });
     }
     return hotspotRowsPromise;
+  }
+
+  function ringContainsPoint(point, ring) {
+    if (!Array.isArray(ring) || ring.length < 4) return false;
+    const [x, y] = point;
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = Array.isArray(ring[i]) ? ring[i] : [];
+      const [xj, yj] = Array.isArray(ring[j]) ? ring[j] : [];
+      if (![xi, yi, xj, yj].every(Number.isFinite)) continue;
+      const intersects = ((yi > y) !== (yj > y))
+        && (x < (((xj - xi) * (y - yi)) / (yj - yi)) + xi);
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  }
+
+  function polygonContainsPoint(point, polygonCoords) {
+    if (!Array.isArray(polygonCoords) || polygonCoords.length === 0) return false;
+    if (!ringContainsPoint(point, polygonCoords[0])) return false;
+    for (let i = 1; i < polygonCoords.length; i++) {
+      if (ringContainsPoint(point, polygonCoords[i])) return false;
+    }
+    return true;
+  }
+
+  function geometryContainsLatLng(geometry, lat, lng) {
+    if (!geometry || !Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    const point = [lng, lat];
+    if (geometry.type === 'Polygon') return polygonContainsPoint(point, geometry.coordinates);
+    if (geometry.type === 'MultiPolygon') {
+      return (geometry.coordinates || []).some((polygonCoords) => polygonContainsPoint(point, polygonCoords));
+    }
+    return false;
+  }
+
+  function getGeometryBounds(geometry) {
+    const bounds = {
+      minLng: Infinity,
+      minLat: Infinity,
+      maxLng: -Infinity,
+      maxLat: -Infinity,
+    };
+
+    function extendRing(ring) {
+      for (const coord of ring || []) {
+        const [lng, lat] = Array.isArray(coord) ? coord : [];
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+        if (lng < bounds.minLng) bounds.minLng = lng;
+        if (lng > bounds.maxLng) bounds.maxLng = lng;
+        if (lat < bounds.minLat) bounds.minLat = lat;
+        if (lat > bounds.maxLat) bounds.maxLat = lat;
+      }
+    }
+
+    if (!geometry) return null;
+    if (geometry.type === 'Polygon') {
+      for (const ring of geometry.coordinates || []) extendRing(ring);
+    } else if (geometry.type === 'MultiPolygon') {
+      for (const polygonCoords of geometry.coordinates || []) {
+        for (const ring of polygonCoords || []) extendRing(ring);
+      }
+    } else {
+      return null;
+    }
+
+    if (![bounds.minLng, bounds.minLat, bounds.maxLng, bounds.maxLat].every(Number.isFinite)) return null;
+    return bounds;
+  }
+
+  function countHotspotsInGeometry(rows, geometry) {
+    const bounds = getGeometryBounds(geometry);
+    if (!bounds) return 0;
+
+    let count = 0;
+    for (const row of rows || []) {
+      const [lat, lng] = row;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      if (lng < bounds.minLng || lng > bounds.maxLng || lat < bounds.minLat || lat > bounds.maxLat) continue;
+      if (geometryContainsLatLng(geometry, lat, lng)) count += 1;
+    }
+    return count;
+  }
+
+  function renderHotspotCountTile(count = null, state = 'ready') {
+    const tileEl = document.getElementById('hotspotCountTile');
+    if (!tileEl) return;
+    if (state === 'loading') {
+      tileEl.innerHTML = '<div class="stat-label">Hotspots</div><div class="stat-value">…</div><div class="stat-subvalue">Counting in block</div>';
+      return;
+    }
+    if (state === 'error') {
+      tileEl.innerHTML = '<div class="stat-label">Hotspots</div><div class="stat-value">—</div><div class="stat-subvalue">Count unavailable</div>';
+      return;
+    }
+    tileEl.innerHTML = `<div class="stat-label">Hotspots</div><div class="stat-value">${formatNum(count, 0)}</div><div class="stat-subvalue">eBird in block</div>`;
+  }
+
+  async function updateBlockHotspotTile(blockCode, geometry) {
+    const renderToken = ++hotspotCountRenderToken;
+    const code = /^[A-Za-z0-9]+$/.test(blockCode || '') ? blockCode : '';
+    if (!code || !geometry) {
+      renderHotspotCountTile(null, 'error');
+      return;
+    }
+
+    if (hotspotCountByBlockCode.has(code)) {
+      renderHotspotCountTile(hotspotCountByBlockCode.get(code));
+      return;
+    }
+
+    renderHotspotCountTile(null, 'loading');
+    try {
+      const rows = await ensureHotspotRows();
+      if (renderToken !== hotspotCountRenderToken || currentBlockCode !== code) return;
+      const count = countHotspotsInGeometry(rows, geometry);
+      hotspotCountByBlockCode.set(code, count);
+      renderHotspotCountTile(count);
+    } catch (e) {
+      if (renderToken !== hotspotCountRenderToken || currentBlockCode !== code) return;
+      console.warn('Hotspot count failed:', e.message);
+      renderHotspotCountTile(null, 'error');
+    }
   }
 
   function rebuildHotspotLayer(rows) {
@@ -1742,6 +1886,12 @@
   }
 
   panelContent.addEventListener('click', (e) => {
+    const urlCard = e.target.closest('.stat-card[data-url]');
+    if (urlCard) {
+      const url = urlCard.dataset.url;
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
     const card = e.target.closest('.stat-card[data-layer]');
     if (!card) return;
     const style = card.dataset.layer;
@@ -1749,6 +1899,16 @@
     addEffortLayer(style);
     updateTileHighlights();
     updateLegend(style);
+  });
+
+  panelContent.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const urlCard = e.target.closest('.stat-card[data-url]');
+    if (!urlCard) return;
+    const url = urlCard.dataset.url;
+    if (!url) return;
+    e.preventDefault();
+    window.open(url, '_blank', 'noopener,noreferrer');
   });
 
   // ── BASEMAP SWITCHER ──────────────────────────────────────────
@@ -2048,7 +2208,7 @@
     return `${Math.round((numerator / denominator) * 100)} %`;
   }
 
-  function renderPanel(props, isCurrentLocation = false) {
+  function renderPanel(props, isCurrentLocation = false, geojsonGeometry = null) {
     const code = /^[A-Za-z0-9]+$/.test(props.block_code || '') ? props.block_code : 'unknown';
     const { name: blockName, county: blockCounty } = resolveBlockName(code);
     const isComplete = props.is_complete === 'Y' || props.is_complete === 'true' || props.is_complete === true;
@@ -2085,9 +2245,10 @@
           <div class="stat-label">Coded spp</div>
           <div class="stat-value">${formatNum(props.num_coded, 0)}</div>
         </div>
-        <div class="stat-card" style="opacity:0.4">
+        <div class="stat-card stat-card-link" id="ebirdTile" data-url="${escHtml(ebirdUrl)}" role="link" tabindex="0" aria-label="Open eBird atlas block page">
           <div class="stat-label">eBird</div>
-          <div class="stat-value" style="font-size:0.72rem;font-weight:600;"><a class="ebird-link" style="margin:0" href="${escHtml(ebirdUrl)}" target="_blank" rel="noopener noreferrer">View ↗</a></div>
+          <div class="stat-value">View</div>
+          <div class="stat-subvalue">Atlas block page ↗</div>
         </div>
         <div class="stat-card" id="countyCoverageTile">
           <div class="stat-label">County blocks</div>
@@ -2099,11 +2260,17 @@
           <div class="stat-value">…</div>
           <div class="stat-subvalue">Loading</div>
         </div>
+        <div class="stat-card stat-card-hotspots" id="hotspotCountTile">
+          <div class="stat-label">Hotspots</div>
+          <div class="stat-value">…</div>
+          <div class="stat-subvalue">Counting in block</div>
+        </div>
       </div>
       <div class="layer-hint">Tap tile to select layer</div>
     `;
     currentBlockCounty = blockCounty;
     updateCountySummaryTiles(blockCounty);
+    updateBlockHotspotTile(code, geojsonGeometry);
     maybeLoadActiveCountyZeroEffort(blockCounty);
     updateTileHighlights();
   }
@@ -2152,11 +2319,11 @@
         if (incomingCode && incomingCode === currentBlockCode) return;
         currentBlockCode = incomingCode;
         setBlockHighlight(feat.geometry);
-        renderPanel(feat.properties, true);
+        renderPanel(feat.properties, true, feat.geometry);
       } else {
         currentBlockCode = incomingCode;
         setBlockHighlight(feat.geometry);
-        renderPanel(feat.properties, false);
+        renderPanel(feat.properties, false, feat.geometry);
       }
     } catch (err) {
       // Keep the currently displayed block visible on background GPS fetch failures,
