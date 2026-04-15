@@ -2123,23 +2123,23 @@
     if (!tileEl) return;
     const countyName = String(county || '').trim();
     if (!countyName) {
-      tileEl.innerHTML = '<div class="stat-label">Unmapped</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
+      tileEl.innerHTML = '<div class="stat-label">Unmapped blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
       return;
     }
     const countyTotal = Number(total ?? getCountyBlockTotal(countyName)) || 0;
     if (!countyTotal) {
-      tileEl.innerHTML = '<div class="stat-label">Unmapped</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
+      tileEl.innerHTML = '<div class="stat-label">Unmapped blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
       return;
     }
     if (state === 'loading') {
-      tileEl.innerHTML = `<div class="stat-label">Unmapped</div><div class="stat-value">…/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Loading blocks</div>`;
+      tileEl.innerHTML = `<div class="stat-label">Unmapped blocks</div><div class="stat-value">…/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Loading blocks</div>`;
       return;
     }
     if (state === 'error') {
-      tileEl.innerHTML = `<div class="stat-label">Unmapped</div><div class="stat-value">—/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Count unavailable</div>`;
+      tileEl.innerHTML = `<div class="stat-label">Unmapped blocks</div><div class="stat-value">—/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Count unavailable</div>`;
       return;
     }
-    tileEl.innerHTML = `<div class="stat-label">Unmapped</div><div class="stat-value">${formatNum(missingTotal, 0)}/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">${formatPercent(missingTotal, countyTotal)} blocks</div>`;
+    tileEl.innerHTML = `<div class="stat-label">Unmapped blocks</div><div class="stat-value">${formatNum(missingTotal, 0)}/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">${formatPercent(missingTotal, countyTotal)} unmapped</div>`;
   }
 
   async function updateCountySummaryTiles(county) {
@@ -2256,7 +2256,7 @@
           <div class="stat-subvalue">Loading</div>
         </div>
         <div class="stat-card stat-card-unmapped" id="countyMissingTile">
-          <div class="stat-label">Unmapped</div>
+          <div class="stat-label">Unmapped blocks</div>
           <div class="stat-value">…</div>
           <div class="stat-subvalue">Loading</div>
         </div>
