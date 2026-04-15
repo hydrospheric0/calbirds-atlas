@@ -23,14 +23,73 @@ const ALLOWED_ORIGINS = [
 export async function onRequestGet(context) {
   const { env, request, waitUntil } = context;
   const requestOrigin = request.headers.get('Origin') || '';
+  const url = new URL(request.url);
+  const summaryOnly = url.searchParams.get('summary') === '1';
 
   // ── 1. Fast path: serve from KV ──────────────────────────────
   if (env.ATLAS_KV) {
     try {
       const { value, metadata } = await env.ATLAS_KV.getWithMetadata(KV_KEY, 'text');
       if (value) {
+        let parsed = null;
+        try {
+          parsed = JSON.parse(value);
+        } catch (_) { /* serve raw KV value below */ }
+
         const ageS = Date.now() / 1000 - (metadata?.fetchedAt || 0);
-        if (ageS > STALE_AFTER_S) {
+        const looksTruncated = Array.isArray(parsed) && parsed.length === 10000;
+        const cachedTotal = Number(metadata?.total);
+
+        if (summaryOnly) {
+          if (Number.isFinite(cachedTotal) && cachedTotal > 0) {
+            return new Response(JSON.stringify({ total: cachedTotal }), {
+              status: 200,
+              headers: corsHeaders('application/json', requestOrigin),
+            });
+          }
+          if (looksTruncated) {
+            const liveTotal = await fetchZeroBlockTotalFromWfs();
+            if (Number.isFinite(liveTotal) && liveTotal > 0) {
+              waitUntil(
+                env.ATLAS_KV.put(KV_KEY, value, {
+                  metadata: {
+                    fetchedAt: metadata?.fetchedAt || Math.floor(Date.now() / 1000),
+                    total: liveTotal,
+                  },
+                })
+              );
+              return new Response(JSON.stringify({ total: liveTotal }), {
+                status: 200,
+                headers: corsHeaders('application/json', requestOrigin),
+              });
+            }
+          }
+          const fallbackTotal = Array.isArray(parsed) ? parsed.length : null;
+          return new Response(JSON.stringify({ total: fallbackTotal }), {
+            status: 200,
+            headers: corsHeaders('application/json', requestOrigin),
+          });
+        }
+
+        if (looksTruncated) {
+          const refreshed = await fetchFromWfs();
+          if (refreshed) {
+            const refreshedValue = JSON.stringify(refreshed);
+            waitUntil(
+              env.ATLAS_KV.put(KV_KEY, refreshedValue, {
+                metadata: {
+                  fetchedAt: Math.floor(Date.now() / 1000),
+                  total: refreshed.length,
+                },
+              })
+            );
+            return new Response(refreshedValue, {
+              status: 200,
+              headers: corsHeaders('application/json', requestOrigin),
+            });
+          }
+          waitUntil(writeToKv(env.ATLAS_KV));
+        } else if (ageS > STALE_AFTER_S) {
           // Return stale data immediately; refresh KV in the background
           waitUntil(writeToKv(env.ATLAS_KV));
         }
@@ -43,6 +102,20 @@ export async function onRequestGet(context) {
   }
 
   // ── 2. Cold start: fetch directly from WFS ───────────────────
+  if (summaryOnly) {
+    const total = await fetchZeroBlockTotalFromWfs();
+    if (!Number.isFinite(total)) {
+      return new Response(JSON.stringify({ error: 'Upstream WFS fetch failed' }), {
+        status: 502,
+        headers: corsHeaders('application/json', requestOrigin),
+      });
+    }
+    return new Response(JSON.stringify({ total }), {
+      status: 200,
+      headers: corsHeaders('application/json', requestOrigin),
+    });
+  }
+
   const blocks = await fetchFromWfs();
   if (blocks === null) {
     return new Response(JSON.stringify({ error: 'Upstream WFS fetch failed' }), {
@@ -55,7 +128,10 @@ export async function onRequestGet(context) {
   if (env.ATLAS_KV) {
     waitUntil(
       env.ATLAS_KV.put(KV_KEY, jsonStr, {
-        metadata: { fetchedAt: Math.floor(Date.now() / 1000) },
+        metadata: {
+          fetchedAt: Math.floor(Date.now() / 1000),
+          total: blocks.length,
+        },
       })
     );
   }
@@ -71,14 +147,50 @@ async function writeToKv(kv) {
   const blocks = await fetchFromWfs();
   if (blocks === null) return; // WFS unavailable — keep serving the stale value
   await kv.put(KV_KEY, JSON.stringify(blocks), {
-    metadata: { fetchedAt: Math.floor(Date.now() / 1000) },
+    metadata: {
+      fetchedAt: Math.floor(Date.now() / 1000),
+      total: blocks.length,
+    },
   });
 }
 
+async function fetchZeroBlockTotalFromWfs() {
+  const CQL = `num_complete=0 AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
+  const wfsUrl = new URL(WFS_BASE);
+  wfsUrl.searchParams.set('SERVICE', 'WFS');
+  wfsUrl.searchParams.set('VERSION', '2.0.0');
+  wfsUrl.searchParams.set('REQUEST', 'GetFeature');
+  wfsUrl.searchParams.set('typeName', 'clo:BBA_CA_EFFORT_MAP');
+  wfsUrl.searchParams.set('count', '10');
+  wfsUrl.searchParams.set('startIndex', '0');
+  wfsUrl.searchParams.set('CQL_FILTER', CQL);
+  wfsUrl.searchParams.set('propertyName', 'block_code');
+  wfsUrl.searchParams.set('outputFormat', 'application/json');
+
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), WFS_TIMEOUT_MS);
+  try {
+    const res = await fetch(wfsUrl.toString(), {
+      headers: { 'User-Agent': 'CalBirds-Atlas/1.0 (calbirds.org)' },
+      signal: controller.signal,
+      cf: { cacheTtl: 21600, cacheEverything: true },
+    });
+    if (!res.ok) return null;
+    const geojson = await res.json();
+    const matched = Number(geojson.numberMatched ?? geojson.totalFeatures);
+    return Number.isFinite(matched) ? matched : null;
+  } catch (_) {
+    return null;
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
 async function fetchFromWfs() {
-  const PAGE_SIZE = 10000;
+  const PAGE_SIZE = 2000;
   const CQL = `num_complete=0 AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
   const all = [];
+  const seen = new Set();
   let startIndex = 0;
 
   while (true) {
@@ -102,19 +214,30 @@ async function fetchFromWfs() {
         signal: controller.signal,
         cf: { cacheTtl: 21600, cacheEverything: true },
       });
-      if (!res.ok) return all.length ? all : null;
+      if (!res.ok) return null;
       geojson = await res.json();
     } catch (_) {
-      return all.length ? all : null;
+      return null;
     } finally {
       clearTimeout(tid);
     }
 
     const page = (geojson.features || []).map(f => f.properties?.block_code).filter(Boolean);
-    all.push(...page);
+    for (const code of page) {
+      if (seen.has(code)) continue;
+      seen.add(code);
+      all.push(code);
+    }
 
-    // Stop if we got fewer than a full page (no more results)
-    if (page.length < PAGE_SIZE) break;
+    const matched = Number(geojson.numberMatched);
+    const returned = Number(geojson.numberReturned);
+    if (Number.isFinite(matched) && Number.isFinite(returned)) {
+      if (startIndex + returned >= matched) break;
+    } else if (page.length < PAGE_SIZE) {
+      break;
+    }
+
+    if (!page.length) break;
     startIndex += PAGE_SIZE;
   }
 

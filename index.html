@@ -211,6 +211,43 @@
 
     .ebird-link:hover { text-decoration: underline; }
 
+    .leaflet-popup.hotspot-popup .leaflet-popup-content-wrapper {
+      border-radius: 8px;
+      padding: 0;
+    }
+
+    .leaflet-popup.hotspot-popup .leaflet-popup-content {
+      margin: 0.26rem 0.4rem;
+      line-height: 1.1;
+      min-width: 0;
+    }
+
+    .leaflet-popup.hotspot-popup .leaflet-popup-close-button {
+      padding: 0.12rem 0.2rem 0 0;
+      width: auto;
+      height: auto;
+      color: #64748b;
+      font-size: 15px;
+    }
+
+    .hotspot-popup-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.08rem;
+    }
+
+    .hotspot-popup-title {
+      margin: 0;
+      line-height: 1.05;
+    }
+
+    .hotspot-popup-meta {
+      font-size: 0.72rem;
+      line-height: 1.05;
+      color: #475569;
+      white-space: nowrap;
+    }
+
     .current-loc-badge {
       display: inline-block;
       font-size: 0.62rem;
@@ -341,6 +378,9 @@
         line-height: 1;
         white-space: nowrap;
       }
+      .map-quick-legend-item.with-detail {
+        align-items: flex-start;
+      }
       .map-quick-legend-swatch {
         width: 0.72rem;
         height: 0.72rem;
@@ -352,6 +392,23 @@
       }
       .map-quick-legend-swatch.active-block {
         background: #e53e3e;
+      }
+      .map-quick-legend-swatch.hotspot {
+        border-radius: 999px;
+        border: 2px solid #cbd5e1;
+        background: transparent;
+      }
+      .map-quick-legend-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+        min-width: 0;
+      }
+      .map-quick-legend-detail {
+        font-size: 0.56rem;
+        font-weight: 500;
+        color: rgba(248,250,252,0.72);
+        line-height: 1;
       }
 
     /* ── MAP TOP-RIGHT CONTROLS ──────────────────────────── */
@@ -886,13 +943,20 @@
 
   <div id="mapEl">
     <div id="mapQuickLegend" aria-label="Map key">
-      <div class="map-quick-legend-item">
+      <div class="map-quick-legend-item with-detail">
         <span class="map-quick-legend-swatch zero-effort" aria-hidden="true"></span>
-        <span id="zeroLegendText">Zero effort · loading…</span>
+        <span class="map-quick-legend-copy">
+          <span id="zeroLegendText">Zero effort · loading…</span>
+          <span class="map-quick-legend-detail" id="zeroLegendDetail"></span>
+        </span>
       </div>
       <div class="map-quick-legend-item">
         <span class="map-quick-legend-swatch active-block" aria-hidden="true"></span>
         <span>Active block</span>
+      </div>
+      <div class="map-quick-legend-item">
+        <span class="map-quick-legend-swatch hotspot" aria-hidden="true"></span>
+        <span>Hotspots · z10+</span>
       </div>
     </div>
     <div class="map-top-right">
@@ -960,7 +1024,7 @@
     <div class="setting-row" style="margin-top:0.45rem">
       <span>eBird hotspots</span>
       <label class="toggle">
-        <input type="checkbox" id="hotspotToggle" />
+        <input type="checkbox" id="hotspotToggle" checked />
         <span class="toggle-track"></span>
       </label>
     </div>
@@ -993,7 +1057,7 @@
       <dt>Block outlines</dt><dd>Atlas block boundaries</dd>
       <dt>County outlines</dt><dd>County boundaries (visible at zoom ≥ 10)</dd>
       <dt>Zero effort</dt><dd>Purple outlines — nearby blocks with no checklists yet (loads as you pan)</dd>
-      <dt>eBird hotspots</dt><dd>Orange point layer sized by all-time species richness in the current viewport at zoom ≥ 8</dd>
+      <dt>eBird hotspots</dt><dd>Light gray point layer sized by all-time species richness in the current viewport at zoom ≥ 10; tap a point to open the hotspot and load its atlas block below</dd>
     </dl>
     <h3>Data</h3>
     <p>Effort data cached hourly from Cornell's GeoServer. Block boundaries © Cornell Lab / eBird.</p>
@@ -1078,7 +1142,7 @@
   // Create dedicated panes so effort is always beneath block lines
   map.createPane('effortPane').style.zIndex = 350;
   map.createPane('blocksPane').style.zIndex = 380;
-  map.createPane('hotspotPane').style.zIndex = 400;
+  map.createPane('hotspotPane').style.zIndex = 640;
   map.createPane('zeroEffortPane').style.zIndex = 410;
 
   // ── BASEMAPS ──────────────────────────────────────────────────
@@ -1106,7 +1170,7 @@
   let hotspotLayer = null;
   let zeroEffortLayer = null;
   let overlayOpacity = 0.70;
-  const hotspotRenderer = L.canvas({ padding: 0.25 });
+  const hotspotRenderer = L.canvas({ padding: 0.25, pane: 'hotspotPane' });
 
   function addEffortLayer(style) {
     if (effortLayer) { map.removeLayer(effortLayer); effortLayer = null; }
@@ -1136,8 +1200,8 @@
   const BLOCK_DETAIL_MIN_ZOOM = 8;
 
   // ── HOTSPOTS (viewport-based points) ─────────────────────────
-  let hotspotEnabled = false;
-  const HOTSPOT_MIN_ZOOM = BLOCK_DETAIL_MIN_ZOOM;
+  let hotspotEnabled = true;
+  const HOTSPOT_MIN_ZOOM = 10;
   const HOTSPOT_PAD = 0.15;
   let hotspotRows = null;
   let hotspotRowsPromise = null;
@@ -1154,22 +1218,22 @@
 
   function hotspotOpacityStyle() {
     return {
-      opacity: Math.max(0.45, overlayOpacity),
-      fillOpacity: Math.max(0.35, Math.min(0.8, overlayOpacity)),
+      opacity: Math.max(0.72, Math.min(0.95, overlayOpacity * 1.15)),
+      fillOpacity: 0,
     };
   }
 
   function buildHotspotPopup(row) {
     const [_lat, _lng, species, locId, locName] = row;
     const hotspotUrl = /^[A-Za-z0-9]+$/.test(locId) ? `https://ebird.org/hotspot/${locId}` : '';
-    const linkHtml = hotspotUrl
-      ? `<a class="ebird-link" style="margin:0.28rem 0 0" href="${hotspotUrl}" target="_blank" rel="noopener noreferrer">View hotspot ↗</a>`
-      : '';
+    const hotspotLabel = escHtml(locName || locId || 'Hotspot');
+    const titleHtml = hotspotUrl
+      ? `<a class="ebird-link" style="font-weight:700;color:#0f172a;text-decoration:none" href="${hotspotUrl}" target="_blank" rel="noopener noreferrer">${hotspotLabel} ↗</a>`
+      : hotspotLabel;
     return `
-      <div style="min-width:11rem">
-        <div style="font-weight:700;color:#0f172a;margin-bottom:0.18rem">${escHtml(locName || locId || 'Hotspot')}</div>
-        <div style="font-size:0.75rem;color:#475569">${formatNum(species, 0)} species all-time</div>
-        ${linkHtml}
+      <div class="hotspot-popup-body">
+        <div class="hotspot-popup-title">${titleHtml}</div>
+        <div class="hotspot-popup-meta">${formatNum(species, 0)} species all-time</div>
       </div>
     `;
   }
@@ -1179,13 +1243,17 @@
     const marker = L.circleMarker([lat, lng], {
       pane: 'hotspotPane',
       renderer: hotspotRenderer,
+      bubblingMouseEvents: false,
       radius: hotspotRadius(species),
-      color: '#7c2d12',
-      fillColor: '#f59e0b',
-      weight: 0.8,
+      color: '#64748b',
+      fill: false,
+      weight: 1.6,
       ...hotspotOpacityStyle(),
     });
-    marker.bindPopup(buildHotspotPopup(row));
+    marker.bindPopup(buildHotspotPopup(row), { className: 'hotspot-popup', autoPanPadding: [12, 12] });
+    marker.on('click', () => {
+      fetchAndShowBlock(lat, lng, false);
+    });
     return marker;
   }
 
@@ -1414,7 +1482,19 @@
 
   function updateZeroLegendText() {
     const el = document.getElementById('zeroLegendText');
+    const detailEl = document.getElementById('zeroLegendDetail');
     if (!el) return;
+    const stateTotal = countyCoverageByName?.stateTotal || 0;
+    const stateZeroTotal = countyCoverageByName?.stateZeroTotal;
+    if (detailEl) {
+      if (stateTotal && Number.isFinite(stateZeroTotal)) {
+        detailEl.textContent = `${formatNum(stateZeroTotal, 0)} / ${formatNum(stateTotal, 0)} statewide`;
+      } else if (stateTotal) {
+        detailEl.textContent = `… / ${formatNum(stateTotal, 0)} statewide`;
+      } else {
+        detailEl.textContent = '';
+      }
+    }
     if (!zeroEffortEnabled) { el.textContent = 'Zero effort (off)'; return; }
     if (map.getZoom() < ZERO_EFFORT_MIN_ZOOM) {
       el.textContent = 'Zero effort — zoom in';
@@ -1458,6 +1538,17 @@
         const data = await cachedFetch('/api/zeroblocks', 30000);
         const codes = Array.isArray(data) ? data.filter((code) => /^[A-Za-z0-9]+$/.test(code)) : [];
         zeroBlockCodeSet = new Set(codes);
+        let stateZeroTotal = zeroBlockCodeSet.size;
+
+        if (codes.length === 10000) {
+          try {
+            const summary = await cachedFetch('/api/zeroblocks?summary=1', 30000);
+            const total = Number(summary?.total);
+            if (Number.isFinite(total) && total > stateZeroTotal) {
+              stateZeroTotal = total;
+            }
+          } catch (_) { /* keep code-count fallback */ }
+        }
 
         const zeroByCounty = {};
         for (const code of zeroBlockCodeSet) {
@@ -1465,7 +1556,11 @@
           if (!countyName) continue;
           zeroByCounty[countyName] = (zeroByCounty[countyName] || 0) + 1;
         }
-        if (countyCoverageByName) countyCoverageByName.zeroByCounty = zeroByCounty;
+        if (countyCoverageByName) {
+          countyCoverageByName.zeroByCounty = zeroByCounty;
+          countyCoverageByName.stateZeroTotal = stateZeroTotal;
+        }
+        updateZeroLegendText();
         return zeroBlockCodeSet;
       })().catch((err) => {
         zeroBlockCodePromise = null;
@@ -1734,9 +1829,17 @@
 
     // Build county totals for the block info panel
     if (blockNames) countyCoverageByName = buildCountyCoverageFromBlockNames();
+    updateZeroLegendText();
+
+    // Prime statewide zero-effort counts for legend totals.
+    ensureZeroBlockCodeSet().catch((e) => {
+      console.warn('Statewide zero-block count load failed:', e.message);
+      updateZeroLegendText();
+    });
 
     // Activate layers now that data is available
     updateZeroEffortVisibility();
+    updateHotspotVisibility();
     updateCountyVisibility();
 
     // Fade out loader
@@ -2066,7 +2169,7 @@
   function buildCountyCoverageFromBlockNames() {
     const totalByCounty = {};
     const codesByCounty = {};
-    if (!blockNames) return { totalByCounty, codesByCounty, zeroByCounty: {} };
+    if (!blockNames) return { totalByCounty, codesByCounty, zeroByCounty: {}, stateTotal: 0, stateZeroTotal: null };
     Object.entries(blockNames).forEach(([code, item]) => {
       if (!Array.isArray(item) || item.length < 2) return;
       const county = String(item[1] || '').trim();
@@ -2075,7 +2178,13 @@
       if (!codesByCounty[county]) codesByCounty[county] = [];
       codesByCounty[county].push(code);
     });
-    return { totalByCounty, codesByCounty, zeroByCounty: {} };
+    return {
+      totalByCounty,
+      codesByCounty,
+      zeroByCounty: {},
+      stateTotal: Object.keys(blockNames).length,
+      stateZeroTotal: null,
+    };
   }
 
   function getCountyBlockTotal(county) {
