@@ -974,7 +974,7 @@
       <dt>Block outlines</dt><dd>Atlas block boundaries</dd>
       <dt>County outlines</dt><dd>County boundaries (visible at zoom ≥ 10)</dd>
       <dt>Zero effort</dt><dd>Purple outlines — nearby blocks with no checklists yet (loads as you pan)</dd>
-      <dt>eBird hotspots</dt><dd>Orange point layer sized by all-time species richness in the current viewport</dd>
+      <dt>eBird hotspots</dt><dd>Orange point layer sized by all-time species richness in the current viewport at zoom ≥ 8</dd>
     </dl>
     <h3>Data</h3>
     <p>Effort data cached hourly from Cornell's GeoServer. Block boundaries © Cornell Lab / eBird.</p>
@@ -1114,9 +1114,11 @@
     blockLayer = null;
   }
 
+  const BLOCK_DETAIL_MIN_ZOOM = 8;
+
   // ── HOTSPOTS (viewport-based points) ─────────────────────────
   let hotspotEnabled = false;
-  const HOTSPOT_MIN_ZOOM = 7;
+  const HOTSPOT_MIN_ZOOM = BLOCK_DETAIL_MIN_ZOOM;
   const HOTSPOT_PAD = 0.15;
   let hotspotRows = null;
   let hotspotRowsPromise = null;
@@ -1227,7 +1229,7 @@
   // Accumulates features across pans so blocks remain visible when scrolling
   // back. Re-fetches when the viewport moves outside the last-fetched bbox.
   let zeroEffortEnabled = false;
-  const ZERO_EFFORT_MIN_ZOOM = 8;
+  const ZERO_EFFORT_MIN_ZOOM = BLOCK_DETAIL_MIN_ZOOM;
   const ZERO_EFFORT_AUTO_COUNTY_MAX_BLOCKS = 500;
   let zeroFetchedBounds = null;   // L.LatLngBounds of the last successful fetch
   let zeroFetchInFlight  = false;
@@ -1932,7 +1934,7 @@
     return Math.max(0, total - missing);
   }
 
-  function updateCountyCoverageTile(county) {
+  function renderCountyCoverageTile(county, completedTotal = null, total = null, state = 'ready') {
     const tileEl = document.getElementById('countyCoverageTile');
     if (!tileEl) return;
     const countyName = String(county || '').trim();
@@ -1940,18 +1942,23 @@
       tileEl.innerHTML = '<div class="stat-label">County blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
       return;
     }
-    const total = getCountyBlockTotal(countyName);
-    const hasZeroCounts = countyCoverageByName && countyCoverageByName.zeroByCounty && Object.prototype.hasOwnProperty.call(countyCoverageByName.zeroByCounty, countyName);
-    const completed = hasZeroCounts ? getCountyCompletedBlockTotal(countyName) : null;
-    const subvalue = hasZeroCounts
-      ? `${formatNum(completed, 0)}/${formatNum(total, 0)} completed`
-      : `${escHtml(countyName)} county`;
-    tileEl.innerHTML = total > 0
-      ? `<div class="stat-label">County blocks</div><div class="stat-value">${formatNum(total, 0)}</div><div class="stat-subvalue">${subvalue}</div>`
-      : `<div class="stat-label">County blocks</div><div class="stat-value">—</div><div class="stat-subvalue">${escHtml(countyName)} county</div>`;
+    const countyTotal = Number(total ?? getCountyBlockTotal(countyName)) || 0;
+    if (!countyTotal) {
+      tileEl.innerHTML = '<div class="stat-label">County blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
+      return;
+    }
+    if (state === 'loading') {
+      tileEl.innerHTML = `<div class="stat-label">County blocks</div><div class="stat-value">…/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Loading completion</div>`;
+      return;
+    }
+    if (state === 'error') {
+      tileEl.innerHTML = `<div class="stat-label">County blocks</div><div class="stat-value">—/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Completion unavailable</div>`;
+      return;
+    }
+    tileEl.innerHTML = `<div class="stat-label">County blocks</div><div class="stat-value">${formatNum(completedTotal, 0)}/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">${formatPercent(completedTotal, countyTotal)} completed</div>`;
   }
 
-  function renderCountyMissingTile(county, missingTotal = null, state = 'ready') {
+  function renderCountyMissingTile(county, missingTotal = null, total = null, state = 'ready') {
     const tileEl = document.getElementById('countyMissingTile');
     if (!tileEl) return;
     const countyName = String(county || '').trim();
@@ -1959,34 +1966,43 @@
       tileEl.innerHTML = '<div class="stat-label">Unmapped blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
       return;
     }
+    const countyTotal = Number(total ?? getCountyBlockTotal(countyName)) || 0;
+    if (!countyTotal) {
+      tileEl.innerHTML = '<div class="stat-label">Unmapped blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
+      return;
+    }
     if (state === 'loading') {
-      tileEl.innerHTML = `<div class="stat-label">Unmapped blocks</div><div class="stat-value">…</div><div class="stat-subvalue">${escHtml(countyName)} county</div>`;
+      tileEl.innerHTML = `<div class="stat-label">Unmapped blocks</div><div class="stat-value">…/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Loading completion</div>`;
       return;
     }
     if (state === 'error') {
-      tileEl.innerHTML = `<div class="stat-label">Unmapped blocks</div><div class="stat-value">—</div><div class="stat-subvalue">${escHtml(countyName)} county</div>`;
+      tileEl.innerHTML = `<div class="stat-label">Unmapped blocks</div><div class="stat-value">—/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Completion unavailable</div>`;
       return;
     }
-    tileEl.innerHTML = `<div class="stat-label">Unmapped blocks</div><div class="stat-value">${formatNum(missingTotal, 0)}</div><div class="stat-subvalue">${escHtml(countyName)} county</div>`;
+    tileEl.innerHTML = `<div class="stat-label">Unmapped blocks</div><div class="stat-value">${formatNum(missingTotal, 0)}/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">${formatPercent(missingTotal, countyTotal)} unmapped</div>`;
   }
 
   async function updateCountySummaryTiles(county) {
     const renderGen = ++countyCoverageRenderGen;
-    updateCountyCoverageTile(county);
-    renderCountyMissingTile(county, null, 'loading');
-
     const countyName = String(county || '').trim();
     if (!countyName) return;
+    const total = getCountyBlockTotal(countyName);
+
+    renderCountyCoverageTile(countyName, null, total, 'loading');
+    renderCountyMissingTile(countyName, null, total, 'loading');
 
     try {
       await ensureZeroBlockCodeSet();
       if (renderGen !== countyCoverageRenderGen) return;
-      updateCountyCoverageTile(countyName);
-      renderCountyMissingTile(countyName, getCountyMissingBlockTotal(countyName));
+      const missing = getCountyMissingBlockTotal(countyName);
+      const completed = getCountyCompletedBlockTotal(countyName);
+      renderCountyCoverageTile(countyName, completed, total);
+      renderCountyMissingTile(countyName, missing, total);
     } catch (e) {
       if (renderGen !== countyCoverageRenderGen) return;
       console.warn('County zero-block count load failed:', e.message);
-      renderCountyMissingTile(countyName, null, 'error');
+      renderCountyCoverageTile(countyName, null, total, 'error');
+      renderCountyMissingTile(countyName, null, total, 'error');
     }
   }
 
@@ -2023,6 +2039,13 @@
     const n = parseFloat(v);
     if (isNaN(n)) return '—';
     return n === 0 ? '0' : n.toFixed(decimals).replace(/\.0$/, '');
+  }
+
+  function formatPercent(part, total) {
+    const numerator = Number(part);
+    const denominator = Number(total);
+    if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return '—';
+    return `${Math.round((numerator / denominator) * 100)} %`;
   }
 
   function renderPanel(props, isCurrentLocation = false) {
