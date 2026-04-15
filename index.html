@@ -407,9 +407,9 @@
         gap: 0.08rem;
         padding: 0.5rem 0.62rem 0.52rem;
         border-radius: 12px;
-        background: rgba(248,250,252,0.95);
-        border: 1px solid rgba(12,27,80,0.14);
-        box-shadow: 0 4px 16px rgba(15,23,42,0.18);
+        background: linear-gradient(135deg, rgba(8,145,178,0.96), rgba(37,99,235,0.95));
+        border: 1px solid rgba(255,255,255,0.18);
+        box-shadow: 0 6px 18px rgba(15,23,42,0.24);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         min-width: 7.2rem;
@@ -422,20 +422,54 @@
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #64748b;
+        color: rgba(255,255,255,0.82);
         line-height: 1;
       }
       .progress-bubble-value {
         font-size: 0.94rem;
         font-weight: 800;
-        color: #0f172a;
+        color: #f8fafc;
         line-height: 1.05;
       }
       .progress-bubble-meta {
         font-size: 0.62rem;
         font-weight: 600;
-        color: #475569;
+        color: rgba(255,255,255,0.82);
         line-height: 1.1;
+      }
+      #mapFetchLoader {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.42rem 0.62rem;
+        border-radius: 999px;
+        background: rgba(12,27,80,0.92);
+        border: 1px solid rgba(255,255,255,0.16);
+        box-shadow: 0 6px 18px rgba(15,23,42,0.22);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
+      #mapFetchLoader[hidden] {
+        display: none;
+      }
+      .map-fetch-loader-spinner {
+        width: 0.78rem;
+        height: 0.78rem;
+        border-radius: 999px;
+        border: 2px solid rgba(255,255,255,0.24);
+        border-top-color: #f8fafc;
+        animation: mapFetchSpin 0.85s linear infinite;
+        flex-shrink: 0;
+      }
+      .map-fetch-loader-text {
+        color: #f8fafc;
+        font-size: 0.64rem;
+        font-weight: 700;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      @keyframes mapFetchSpin {
+        to { transform: rotate(360deg); }
       }
 
     /* ── MAP TOP-RIGHT CONTROLS ──────────────────────────── */
@@ -989,6 +1023,10 @@
         <span class="progress-bubble-value" id="progressBubbleValue">… / …</span>
         <span class="progress-bubble-meta">blocks with data</span>
       </div>
+      <div id="mapFetchLoader" aria-live="polite" hidden>
+        <span class="map-fetch-loader-spinner" aria-hidden="true"></span>
+        <span class="map-fetch-loader-text" id="mapFetchLoaderText">Loading map data…</span>
+      </div>
     </div>
     <div class="map-top-right">
       <button id="settingsBtn" class="map-ctrl-btn" title="Layers &amp; settings" aria-label="Layers and settings">
@@ -1125,38 +1163,94 @@
   }
 
   // ── CACHED FETCH (Cache API + network fallback) ───────────────
-  const ATLAS_CACHE = 'atlas-data-v1';
-  const ATLAS_CACHE_TTL = 3 * 3600 * 1000; // 3 hours client-side
+  const ATLAS_CACHE = 'atlas-data-v2';
+  const ATLAS_AREA_CACHE = 'atlas-area-v1';
+  const ATLAS_CACHE_TTL = 24 * 3600 * 1000; // 1 day client-side
+  const atlasInFlightFetches = new Map();
 
-  async function cachedFetch(url, timeoutMs = 15000) {
-    if ('caches' in window) {
-      try {
-        const cache = await caches.open(ATLAS_CACHE);
-        const cached = await cache.match(url);
-        if (cached) {
-          const ts = Number(cached.headers.get('x-atlas-cached') || 0);
-          if (ts && Date.now() - ts < ATLAS_CACHE_TTL) return cached.json();
-        }
-      } catch (e) { /* fall through to network */ }
+  function showMapFetchLoader(text = 'Loading map data…') {
+    const loader = document.getElementById('mapFetchLoader');
+    const label = document.getElementById('mapFetchLoaderText');
+    if (label) label.textContent = text;
+    if (loader) loader.hidden = false;
+  }
+
+  function hideMapFetchLoader() {
+    const loader = document.getElementById('mapFetchLoader');
+    if (loader) loader.hidden = true;
+  }
+
+  function normalizeCachedFetchArgs(timeoutOrOptions, maybeOptions) {
+    if (typeof timeoutOrOptions === 'object' && timeoutOrOptions !== null) {
+      return { timeoutMs: 15000, options: timeoutOrOptions };
     }
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), timeoutMs);
-    let res;
+    return { timeoutMs: timeoutOrOptions, options: maybeOptions || {} };
+  }
+
+  function getCachedFetchConfig(url, options = {}) {
+    return {
+      cacheName: options.cacheName || ATLAS_CACHE,
+      cacheKey: options.cacheKey || url,
+      ttlMs: Number.isFinite(options.ttlMs) ? options.ttlMs : ATLAS_CACHE_TTL,
+    };
+  }
+
+  async function getFreshCachedResponse(cacheName, cacheKey, ttlMs) {
+    if (!('caches' in window)) return null;
     try {
-      res = await fetch(url, { signal: controller.signal });
-    } finally {
-      clearTimeout(tid);
+      const cache = await caches.open(cacheName);
+      const cached = await cache.match(cacheKey);
+      if (!cached) return null;
+      const ts = Number(cached.headers.get('x-atlas-cached') || 0);
+      if (!ts || Date.now() - ts >= ttlMs) return null;
+      return cached;
+    } catch (e) {
+      return null;
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    if ('caches' in window) {
+  }
+
+  async function hasFreshCacheEntry(cacheName, cacheKey, ttlMs) {
+    return Boolean(await getFreshCachedResponse(cacheName, cacheKey, ttlMs));
+  }
+
+  async function cachedFetch(url, timeoutOrOptions = 15000, maybeOptions = {}) {
+    const { timeoutMs, options } = normalizeCachedFetchArgs(timeoutOrOptions, maybeOptions);
+    const { cacheName, cacheKey, ttlMs } = getCachedFetchConfig(url, options);
+    const cached = await getFreshCachedResponse(cacheName, cacheKey, ttlMs);
+    if (cached) return cached.json();
+
+    const inFlightKey = `${cacheName}::${cacheKey}`;
+    if (atlasInFlightFetches.has(inFlightKey)) return atlasInFlightFetches.get(inFlightKey);
+
+    const requestPromise = (async () => {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), timeoutMs);
+      let res;
       try {
-        const cache = await caches.open(ATLAS_CACHE);
-        const body = await res.clone().blob();
-        const headers = new Headers({ 'Content-Type': 'application/json', 'x-atlas-cached': String(Date.now()) });
-        await cache.put(url, new Response(body, { headers }));
-      } catch (e) { /* cache write failed, ok */ }
+        res = await fetch(url, { signal: controller.signal });
+      } finally {
+        clearTimeout(tid);
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if ('caches' in window) {
+        try {
+          const cache = await caches.open(cacheName);
+          const body = await res.clone().blob();
+          const headers = new Headers({ 'Content-Type': 'application/json', 'x-atlas-cached': String(Date.now()) });
+          await cache.put(cacheKey, new Response(body, { headers }));
+        } catch (e) { /* cache write failed, ok */ }
+      }
+      return res.json();
+    })();
+
+    atlasInFlightFetches.set(inFlightKey, requestPromise);
+    try {
+      return await requestPromise;
+    } finally {
+      if (atlasInFlightFetches.get(inFlightKey) === requestPromise) {
+        atlasInFlightFetches.delete(inFlightKey);
+      }
     }
-    return res.json();
   }
 
   // ── MAP INIT ──────────────────────────────────────────────────
@@ -1467,17 +1561,20 @@
     if (hotspotLayer && map.hasLayer(hotspotLayer)) map.removeLayer(hotspotLayer);
   }
 
-  // ── NEARBY ZERO-EFFORT (viewport-based) ──────────────────────
-  // Fetches zero-effort blocks for the current map viewport when zoom >= 8.
-  // Accumulates features across pans so blocks remain visible when scrolling
-  // back. Re-fetches when the viewport moves outside the last-fetched bbox.
+  // ── NEARBY ZERO-EFFORT (buffered tile cache) ─────────────────
+  // Fetches zero-effort blocks in buffered 1° tiles and caches them for a day.
+  // Small pans reuse the same tile set; only newly exposed tiles are requested.
   let zeroEffortEnabled = false;
   const ZERO_EFFORT_MIN_ZOOM = BLOCK_DETAIL_MIN_ZOOM;
   const ZERO_EFFORT_AUTO_COUNTY_MAX_BLOCKS = 500;
-  let zeroFetchedBounds = null;   // L.LatLngBounds of the last successful fetch
+  const ZERO_TILE_SIZE_DEGREES = 1;
+  const ZERO_TILE_BUFFER_PAD = 0.45;
+  const ZERO_TILE_CACHE_TTL = 24 * 3600 * 1000;
   let zeroFetchInFlight  = false;
   let zeroFetchQueued    = false;  // viewport changed during an in-flight fetch
-  let zeroViewportFeatureMap = new Map(); // block_code → GeoJSON feature (accumulated)
+  let zeroViewportTileKeys = [];
+  let zeroViewportFeatureMap = new Map();
+  let zeroTileFeatureCache = new Map();
   let zeroCountyFeatureMap   = new Map();
   let zeroCountyFeatureCache = new Map();
   let zeroCountyLoadToken    = 0;
@@ -1509,6 +1606,58 @@
       if (code) mapByCode.set(code, feature);
     }
     return mapByCode;
+  }
+
+  function roundZeroTileCoord(value) {
+    return Number(value.toFixed(4));
+  }
+
+  function buildZeroTileDefs(bounds) {
+    const padded = bounds.pad(ZERO_TILE_BUFFER_PAD);
+    const minLat = Math.floor(padded.getSouth() / ZERO_TILE_SIZE_DEGREES) * ZERO_TILE_SIZE_DEGREES;
+    const maxLat = Math.ceil(padded.getNorth() / ZERO_TILE_SIZE_DEGREES) * ZERO_TILE_SIZE_DEGREES;
+    const minLng = Math.floor(padded.getWest() / ZERO_TILE_SIZE_DEGREES) * ZERO_TILE_SIZE_DEGREES;
+    const maxLng = Math.ceil(padded.getEast() / ZERO_TILE_SIZE_DEGREES) * ZERO_TILE_SIZE_DEGREES;
+    const defs = [];
+
+    for (let lat = minLat; lat < maxLat; lat = roundZeroTileCoord(lat + ZERO_TILE_SIZE_DEGREES)) {
+      for (let lng = minLng; lng < maxLng; lng = roundZeroTileCoord(lng + ZERO_TILE_SIZE_DEGREES)) {
+        const south = roundZeroTileCoord(lat);
+        const west = roundZeroTileCoord(lng);
+        const north = roundZeroTileCoord(lat + ZERO_TILE_SIZE_DEGREES);
+        const east = roundZeroTileCoord(lng + ZERO_TILE_SIZE_DEGREES);
+        const latIndex = Math.round(south / ZERO_TILE_SIZE_DEGREES);
+        const lngIndex = Math.round(west / ZERO_TILE_SIZE_DEGREES);
+        defs.push({
+          key: `${latIndex}:${lngIndex}`,
+          bbox: `${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)}`,
+          cacheKey: `/__atlas_cache__/nearbyblocks-zero/v1/${latIndex}_${lngIndex}.json`,
+        });
+      }
+    }
+
+    return defs;
+  }
+
+  function storeZeroTileFeatures(tileKey, features) {
+    zeroTileFeatureCache.set(tileKey, featureMapFromFeatures(features));
+  }
+
+  function syncZeroViewportFeatureMap(tileKeys = zeroViewportTileKeys) {
+    const featuresByCode = new Map();
+    for (const tileKey of tileKeys) {
+      const tileFeatures = zeroTileFeatureCache.get(tileKey);
+      if (!tileFeatures) continue;
+      for (const [code, feature] of tileFeatures) {
+        if (!featuresByCode.has(code)) featuresByCode.set(code, feature);
+      }
+    }
+    zeroViewportFeatureMap = featuresByCode;
+  }
+
+  async function hasFreshZeroTile(def) {
+    if (zeroTileFeatureCache.has(def.key)) return true;
+    return hasFreshCacheEntry(ATLAS_AREA_CACHE, def.cacheKey, ZERO_TILE_CACHE_TTL);
   }
 
   function updateZeroLegendText() {
@@ -1558,9 +1707,9 @@
     return Number(value) === 0;
   }
 
-  async function fetchZeroEffortGeojson(bbox) {
+  async function fetchZeroEffortGeojson(bbox, cacheOptions = null) {
     try {
-      return await cachedFetch(`/api/nearbyblocks?bbox=${bbox}&zeroOnly=1`, 30000);
+      return await cachedFetch(`/api/nearbyblocks?bbox=${bbox}&zeroOnly=1`, 30000, cacheOptions || {});
     } catch (err) {
       console.warn('Zero effort zeroOnly fetch failed, retrying with client-side filter:', err.message);
       const geojson = await cachedFetch(`/api/nearbyblocks?bbox=${bbox}`, 30000);
@@ -1731,31 +1880,41 @@
     zeroFetchQueued = false;
     zeroLastFetchFailed = false;
     updateZeroLegendText();
+    let loaderShown = false;
 
-    const b = map.getBounds().pad(0.3); // 30% padding so small pans don't re-fetch
-    const minLat = b.getSouth().toFixed(4);
-    const maxLat = b.getNorth().toFixed(4);
-    const minLng = b.getWest().toFixed(4);
-    const maxLng = b.getEast().toFixed(4);
-    const bbox = `${minLat},${minLng},${maxLat},${maxLng}`;
+    const tileDefs = buildZeroTileDefs(map.getBounds());
+    zeroViewportTileKeys = tileDefs.map((def) => def.key);
+    syncZeroViewportFeatureMap();
+    rebuildZeroEffortLayer();
 
     try {
-      const geojson = await fetchZeroEffortGeojson(bbox);
-      const features = geojson.features || [];
-      // Accumulate — dedup by block_code so panning back doesn't duplicate
-      for (const f of features) {
-        const code = f.properties?.block_code || f.id;
-        if (code) zeroViewportFeatureMap.set(code, f);
+      const tileDefsToLoad = tileDefs.filter((def) => !zeroTileFeatureCache.has(def.key));
+      if (tileDefsToLoad.length > 0) {
+        const freshStates = await Promise.all(tileDefsToLoad.map((def) => hasFreshZeroTile(def)));
+        if (freshStates.some((isFresh) => !isFresh)) {
+          loaderShown = true;
+          showMapFetchLoader('Loading nearby blocks…');
+        }
+
+        await Promise.all(tileDefsToLoad.map(async (def) => {
+          const geojson = await fetchZeroEffortGeojson(def.bbox, {
+            cacheName: ATLAS_AREA_CACHE,
+            cacheKey: def.cacheKey,
+            ttlMs: ZERO_TILE_CACHE_TTL,
+          });
+          storeZeroTileFeatures(def.key, geojson.features || []);
+        }));
       }
-      zeroFetchedBounds = b;
+
+      syncZeroViewportFeatureMap();
       rebuildZeroEffortLayer();
     } catch (e) {
       zeroLastFetchFailed = true;
       console.warn('Zero effort fetch failed:', e.message);
     } finally {
+      if (loaderShown) hideMapFetchLoader();
       zeroFetchInFlight = false;
       updateZeroLegendText();
-      // If the viewport moved while this fetch was running, fire again
       if (zeroFetchQueued) {
         zeroFetchQueued = false;
         updateZeroEffortVisibility();
@@ -1765,16 +1924,12 @@
 
   function updateZeroEffortVisibility() {
     if (!zeroEffortEnabled || map.getZoom() < ZERO_EFFORT_MIN_ZOOM) {
+      hideMapFetchLoader();
       if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
       updateZeroLegendText();
       return;
     }
-    // Have data and viewport is still within the fetched bounds — just show it
-    if (zeroEffortLayer && zeroFetchedBounds && zeroFetchedBounds.contains(map.getBounds())) {
-      if (!map.hasLayer(zeroEffortLayer)) zeroEffortLayer.addTo(map);
-      return;
-    }
-    // Need fresh data for the new viewport
+
     fetchZeroEffortForViewport();
   }
 
@@ -1786,6 +1941,7 @@
 
   function removeZeroEffortLayer() {
     zeroEffortEnabled = false;
+    hideMapFetchLoader();
     if (zeroEffortLayer && map.hasLayer(zeroEffortLayer)) map.removeLayer(zeroEffortLayer);
     updateZeroLegendText();
   }
