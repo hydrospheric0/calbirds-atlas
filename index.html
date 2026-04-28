@@ -10,6 +10,9 @@
   <title>CA Bird Atlas</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐦</text></svg>" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Preload the slowest data dependencies in parallel with HTML/JS parsing. -->
+  <link rel="preload" as="fetch" href="/api/zeroblocks" crossorigin="anonymous" />
+  <link rel="preload" as="fetch" href="./data/block_names.json" crossorigin="anonymous" />
   <style>
     :root {
       --brand: #0c1b50;
@@ -1231,7 +1234,7 @@
   <div class="info-modal-backdrop" id="summaryModalBackdrop"></div>
   <div class="info-modal-panel" role="dialog" aria-modal="true" aria-labelledby="summaryModalTitle">
     <button id="summaryCloseBtn" class="info-modal-close" type="button" aria-label="Close">×</button>
-    <h2 id="summaryModalTitle">State summary by county</h2>
+    <h2 id="summaryModalTitle">Summary</h2>
     <div class="summary-status" id="summaryStatus">Loading…</div>
     <div class="summary-table-wrap">
       <table class="summary-table" id="summaryTable">
@@ -1764,8 +1767,11 @@
     if (zeroBlockCodeSet) return zeroBlockCodeSet;
     if (!zeroBlockCodePromise) {
       zeroBlockCodePromise = (async () => {
-        await ensureBlockNames();
-        const data = await cachedFetch('/api/zeroblocks', 30000);
+        // Run both in parallel — the API fetch doesn't depend on block_names.
+        const [, data] = await Promise.all([
+          ensureBlockNames(),
+          cachedFetch('/api/zeroblocks', 30000),
+        ]);
         const codes = Array.isArray(data) ? data.filter((code) => /^[A-Za-z0-9]+$/.test(code)) : [];
         zeroBlockCodeSet = new Set(codes);
         let stateZeroTotal = zeroBlockCodeSet.size;
