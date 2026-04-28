@@ -994,6 +994,28 @@
       transition: background 0.15s, color 0.15s;
     }
     .info-modal-copy.copied { background: #16a34a; color: #fff; border-color: #15803d; }
+    .info-modal-img {
+      position: absolute;
+      top: 0.55rem;
+      right: 4.45rem;
+      width: 1.7rem;
+      height: 1.7rem;
+      border: 1px solid rgba(15,23,42,0.14);
+      border-radius: 999px;
+      background: #f8fafc;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0;
+      font-family: inherit;
+    }
+    #summaryModal .info-modal-panel h2 { padding-right: 6.5rem; }
+    .summary-group-check { color: #16a34a; }
+    .summary-group-cross { color: #dc2626; }
     .summary-table tbody tr:hover { background: rgba(15,23,42,0.03); }
     .summary-table tfoot td {
       position: sticky;
@@ -1325,6 +1347,7 @@
   <div class="info-modal-panel" role="dialog" aria-modal="true" aria-labelledby="summaryModalTitle">
     <button id="summaryCloseBtn" class="info-modal-close" type="button" aria-label="Close">×</button>
     <button id="summaryCopyBtn" class="info-modal-copy" type="button" aria-label="Copy table" title="Copy table">⧉</button>
+    <button id="summaryImgBtn" class="info-modal-img" type="button" aria-label="Save as image" title="Save as JPG">🖼</button>
     <h2 id="summaryModalTitle">Summary</h2>
     <div class="summary-status" id="summaryStatus"></div>
     <div class="summary-table-wrap">
@@ -1343,17 +1366,17 @@
             <th></th>
             <th></th>
             <th></th>
-            <th colspan="2" class="summary-group summary-group-check"><span class="summary-icon summary-check">✓</span></th>
-            <th colspan="2" class="summary-group summary-group-cross"><span class="summary-icon summary-cross">✗</span></th>
+            <th colspan="2" class="summary-group summary-group-check">Complete</th>
+            <th colspan="2" class="summary-group summary-group-cross">In Progress</th>
           </tr>
           <tr>
             <th class="summary-rownum-th">#</th>
             <th data-sort-key="county">County <span class="sort-arrow"></span></th>
             <th data-sort-key="total"># <span class="sort-arrow"></span></th>
-            <th data-sort-key="complete"># <span class="sort-arrow"></span></th>
-            <th data-sort-key="completePct">% <span class="sort-arrow"></span></th>
-            <th data-sort-key="unmapped"># <span class="sort-arrow"></span></th>
-            <th data-sort-key="unmappedPct">% <span class="sort-arrow"></span></th>
+            <th data-sort-key="complete"># <span class="summary-icon summary-check">✓</span> <span class="sort-arrow"></span></th>
+            <th data-sort-key="completePct">% <span class="summary-icon summary-check">✓</span> <span class="sort-arrow"></span></th>
+            <th data-sort-key="unmapped"># <span class="summary-icon summary-cross">✗</span> <span class="sort-arrow"></span></th>
+            <th data-sort-key="unmappedPct">% <span class="summary-icon summary-cross">✗</span> <span class="sort-arrow"></span></th>
           </tr>
         </thead>
         <tbody id="summaryTableBody"></tbody>
@@ -2988,6 +3011,68 @@
     } catch (e) {
       btn.textContent = '!';
       setTimeout(() => { btn.textContent = '⧉'; }, 1500);
+    }
+  });
+
+  // Save the summary table as a JPG (preserves styling).
+  let html2canvasPromise = null;
+  function loadHtml2Canvas() {
+    if (window.html2canvas) return Promise.resolve(window.html2canvas);
+    if (html2canvasPromise) return html2canvasPromise;
+    html2canvasPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+      s.onload = () => resolve(window.html2canvas);
+      s.onerror = () => reject(new Error('html2canvas load failed'));
+      document.head.appendChild(s);
+    });
+    return html2canvasPromise;
+  }
+
+  document.getElementById('summaryImgBtn').addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget;
+    const original = btn.textContent;
+    btn.textContent = '…';
+    try {
+      const html2canvas = await loadHtml2Canvas();
+      const wrap = document.querySelector('#summaryModal .summary-table-wrap');
+      if (!wrap) throw new Error('table wrap missing');
+      // Temporarily expand the wrapper so the full table renders (not just the visible scroll window).
+      const prev = {
+        maxHeight: wrap.style.maxHeight,
+        overflow: wrap.style.overflow,
+        height: wrap.style.height,
+      };
+      wrap.style.maxHeight = 'none';
+      wrap.style.overflow = 'visible';
+      wrap.style.height = 'auto';
+      const canvas = await html2canvas(wrap, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true,
+        windowWidth: wrap.scrollWidth,
+      });
+      wrap.style.maxHeight = prev.maxHeight;
+      wrap.style.overflow = prev.overflow;
+      wrap.style.height = prev.height;
+      canvas.toBlob((blob) => {
+        if (!blob) throw new Error('blob missing');
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const ts = new Date().toISOString().slice(0, 10);
+        a.download = `ca-atlas-summary-${ts}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }, 'image/jpeg', 0.92);
+      btn.textContent = '✓';
+      setTimeout(() => { btn.textContent = original; }, 1200);
+    } catch (e) {
+      console.warn('Summary JPG export failed:', e);
+      btn.textContent = '!';
+      setTimeout(() => { btn.textContent = original; }, 1500);
     }
   });
 </script>
