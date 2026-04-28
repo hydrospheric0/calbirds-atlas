@@ -2233,8 +2233,13 @@
     if (results[0].status === 'fulfilled') blockNames = results[0].value;
     if (results[1].status === 'fulfilled') countyGeoJson = results[1].value;
 
-    // Build county totals for the block info panel
-    if (blockNames) countyCoverageByName = buildCountyCoverageFromBlockNames();
+    // Build county totals for the block info panel.
+    // Don't clobber an existing object — `ensureZeroBlockCodeSet()` may have
+    // already finished and populated `stateZeroTotal` / `zeroByCounty` via the
+    // preload-fetched API response.
+    if (blockNames && !countyCoverageByName) {
+      countyCoverageByName = buildCountyCoverageFromBlockNames();
+    }
     updateZeroLegendText();
 
     // Prime statewide zero-effort counts for legend totals.
