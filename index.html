@@ -1270,8 +1270,10 @@
         <thead>
           <tr>
             <th data-sort-key="county">County <span class="sort-arrow"></span></th>
-            <th data-sort-key="total">Blocks <span class="sort-arrow"></span></th>
+            <th data-sort-key="total"># <span class="sort-arrow"></span></th>
+            <th data-sort-key="complete"><span class="summary-icon summary-check">✓</span> # <span class="sort-arrow"></span></th>
             <th data-sort-key="completePct"><span class="summary-icon summary-check">✓</span> % <span class="sort-arrow"></span></th>
+            <th data-sort-key="unmapped"><span class="summary-icon summary-cross">✗</span> # <span class="sort-arrow"></span></th>
             <th data-sort-key="unmappedPct"><span class="summary-icon summary-cross">✗</span> % <span class="sort-arrow"></span></th>
           </tr>
         </thead>
@@ -2795,7 +2797,9 @@
       <tr>
         <td>${escHtml(r.county)}</td>
         <td>${formatNum(r.total, 0)}</td>
+        <td>${hasZeroData ? formatNum(r.complete, 0) : '…'}</td>
         <td>${hasZeroData ? fmtPct(r.completePct) : '…'}</td>
+        <td>${hasZeroData ? formatNum(r.unmapped, 0) : '…'}</td>
         <td>${hasZeroData ? fmtPct(r.unmappedPct) : '…'}</td>
       </tr>
     `).join('');
@@ -2807,7 +2811,9 @@
       <tr>
         <td>State total</td>
         <td>${formatNum(totalBlocks, 0)}</td>
+        <td>${hasZeroData ? formatNum(totalComplete, 0) : '…'}</td>
         <td>${hasZeroData && totalBlocks ? fmtPct(totalComplete / totalBlocks) : '…'}</td>
+        <td>${hasZeroData ? formatNum(totalUnmapped, 0) : '…'}</td>
         <td>${hasZeroData && totalBlocks ? fmtPct(totalUnmapped / totalBlocks) : '…'}</td>
       </tr>
     `;
