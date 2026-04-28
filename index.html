@@ -878,6 +878,72 @@
     .info-modal-panel p { margin-bottom: 0.35rem; color: #334155; }
     .info-modal-panel a { color: var(--accent); }
 
+    /* ── SUMMARY MODAL ──────────────────────────────────────── */
+    #summaryModal .info-modal-panel {
+      width: min(34rem, 94vw);
+      max-height: 88dvh;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 0.6rem;
+    }
+    .summary-status {
+      font-size: 0.72rem;
+      color: #64748b;
+      margin-bottom: 0.4rem;
+    }
+    .summary-table-wrap {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid rgba(15,23,42,0.08);
+      border-radius: 8px;
+    }
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.74rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .summary-table th,
+    .summary-table td {
+      padding: 0.32rem 0.5rem;
+      text-align: right;
+      border-bottom: 1px solid rgba(15,23,42,0.06);
+      white-space: nowrap;
+    }
+    .summary-table th:first-child,
+    .summary-table td:first-child {
+      text-align: left;
+    }
+    .summary-table thead th {
+      position: sticky;
+      top: 0;
+      background: #f1f5f9;
+      color: #0f172a;
+      font-weight: 700;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      user-select: none;
+      z-index: 1;
+    }
+    .summary-table tbody tr:hover { background: rgba(15,23,42,0.03); }
+    .summary-table tfoot td {
+      position: sticky;
+      bottom: 0;
+      background: #f8fafc;
+      font-weight: 700;
+      border-top: 1px solid rgba(15,23,42,0.12);
+    }
+    .summary-table .sort-arrow {
+      display: inline-block;
+      width: 0.6rem;
+      color: #0f172a;
+      font-size: 0.7rem;
+    }
+    .summary-table th.sort-active { color: #0f172a; }
+
     .info-defs {
       display: grid;
       grid-template-columns: auto 1fr;
