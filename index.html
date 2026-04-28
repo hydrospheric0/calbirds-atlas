@@ -952,6 +952,14 @@
       font-size: 0.7rem;
     }
     .summary-table th.sort-active { color: #0f172a; }
+    .summary-icon {
+      font-weight: 800;
+      display: inline-block;
+      transform: translateY(-1px);
+    }
+    .summary-check { color: #16a34a; }
+    .summary-cross { color: #dc2626; }
+    .summary-status:empty { display: none; }
 
     .info-defs {
       display: grid;
@@ -1235,15 +1243,15 @@
   <div class="info-modal-panel" role="dialog" aria-modal="true" aria-labelledby="summaryModalTitle">
     <button id="summaryCloseBtn" class="info-modal-close" type="button" aria-label="Close">×</button>
     <h2 id="summaryModalTitle">Summary</h2>
-    <div class="summary-status" id="summaryStatus">Loading…</div>
+    <div class="summary-status" id="summaryStatus"></div>
     <div class="summary-table-wrap">
       <table class="summary-table" id="summaryTable">
         <thead>
           <tr>
             <th data-sort-key="county">County <span class="sort-arrow"></span></th>
             <th data-sort-key="total">Blocks <span class="sort-arrow"></span></th>
-            <th data-sort-key="completePct">Complete % <span class="sort-arrow"></span></th>
-            <th data-sort-key="unmappedPct">Unmapped % <span class="sort-arrow"></span></th>
+            <th data-sort-key="completePct"><span class="summary-icon summary-check">✓</span> % <span class="sort-arrow"></span></th>
+            <th data-sort-key="unmappedPct"><span class="summary-icon summary-cross">✗</span> % <span class="sort-arrow"></span></th>
           </tr>
         </thead>
         <tbody id="summaryTableBody"></tbody>
@@ -2757,9 +2765,7 @@
 
     const hasZeroData = Boolean(countyCoverageByName?.zeroByCounty)
       && Object.keys(countyCoverageByName.zeroByCounty).length > 0;
-    summaryStatusEl.textContent = hasZeroData
-      ? `${rows.length} counties · sorted by ${summaryState.key === 'county' ? 'name' : summaryState.key.replace('Pct', ' %')}`
-      : 'Loading completion data…';
+    summaryStatusEl.textContent = hasZeroData ? '' : 'Loading completion data…';
 
     rows.sort((a, b) => compareSummaryRows(a, b, summaryState.key, summaryState.dir));
 
