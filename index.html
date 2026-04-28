@@ -921,12 +921,55 @@
       color: #64748b;
       margin-bottom: 0.4rem;
     }
+    .summary-export-root {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      background: #ffffff;
+    }
     .summary-table-wrap {
       flex: 1 1 auto;
       min-height: 0;
       overflow: auto;
       border: 1px solid rgba(15,23,42,0.08);
       border-radius: 8px;
+    }
+    .summary-state-totals {
+      flex: 0 0 auto;
+      border-collapse: collapse;
+      font-size: 0.72rem;
+      font-variant-numeric: tabular-nums;
+      border: 1px solid rgba(15,23,42,0.12);
+      border-radius: 8px;
+      overflow: hidden;
+      width: auto;
+      align-self: flex-start;
+    }
+    .summary-state-totals caption {
+      caption-side: top;
+      text-align: left;
+      font-weight: 800;
+      font-size: 0.78rem;
+      padding: 0.15rem 0.35rem 0.25rem;
+      color: #0f172a;
+    }
+    .summary-state-totals td {
+      padding: 0.18rem 0.5rem;
+      border-bottom: 1px solid rgba(15,23,42,0.08);
+    }
+    .summary-state-totals tr:last-child td { border-bottom: 0; }
+    .summary-state-totals td.label {
+      color: #475569;
+      font-weight: 600;
+      background: #f8fafc;
+    }
+    .summary-state-totals td.value {
+      text-align: right;
+      font-weight: 700;
+      color: #0f172a;
+      min-width: 4.5rem;
     }
     .summary-table {
       width: 100%;
@@ -969,10 +1012,10 @@
       border-bottom: 1px solid rgba(15,23,42,0.12);
     }
     .summary-grouprow th:empty { background: #f8fafc; }
-    .summary-table .col-rownum { width: 1.4rem; }
+    .summary-table .col-rownum { width: 1.6rem; }
     .summary-table .col-county { width: auto; }
-    .summary-table .col-total { width: 3rem; }
-    .summary-table .col-num { width: 2.7rem; }
+    .summary-table .col-total { width: 2.6rem; }
+    .summary-table .col-num { width: 2.4rem; }
     .summary-table thead tr:not(.summary-grouprow) th[data-sort-key] { /* sticky already gives a positioning context */ }
     .info-modal-copy {
       position: absolute;
@@ -1351,7 +1394,9 @@
     <button id="summaryImgBtn" class="info-modal-img" type="button" aria-label="Save as image" title="Save as JPG">🖼</button>
     <h2 id="summaryModalTitle">Summary</h2>
     <div class="summary-status" id="summaryStatus"></div>
-    <div class="summary-table-wrap">
+    <div class="summary-export-root" id="summaryExportRoot">
+      <table class="summary-state-totals" id="summaryStateTotals" aria-label="State totals"></table>
+      <div class="summary-table-wrap">
       <table class="summary-table" id="summaryTable">
         <colgroup>
           <col class="col-rownum" />
@@ -1381,8 +1426,8 @@
           </tr>
         </thead>
         <tbody id="summaryTableBody"></tbody>
-        <tfoot id="summaryTableFoot"></tfoot>
       </table>
+    </div>
     </div>
   </div>
 </div>
@@ -2866,7 +2911,7 @@
   const summaryModal = document.getElementById('summaryModal');
   const summaryStatusEl = document.getElementById('summaryStatus');
   const summaryBodyEl = document.getElementById('summaryTableBody');
-  const summaryFootEl = document.getElementById('summaryTableFoot');
+  const summaryStateTotalsEl = document.getElementById('summaryStateTotals');
   const summaryHeaderRow = document.querySelector('#summaryTable thead tr:not(.summary-grouprow)');
   const summaryState = { key: 'county', dir: 'asc' };
 
@@ -2916,7 +2961,7 @@
     if (!rows.length) {
       summaryStatusEl.textContent = 'No county data available yet.';
       summaryBodyEl.innerHTML = '';
-      summaryFootEl.innerHTML = '';
+      summaryStateTotalsEl.innerHTML = '';
       renderSummaryHeaders();
       return;
     }
@@ -2943,16 +2988,13 @@
     const totalBlocks = rows.reduce((s, r) => s + r.total, 0);
     const totalUnmapped = rows.reduce((s, r) => s + r.unmapped, 0);
     const totalComplete = totalBlocks - totalUnmapped;
-    summaryFootEl.innerHTML = `
-      <tr>
-        <td></td>
-        <td>State total</td>
-        <td>${formatNum(totalBlocks, 0)}</td>
-        <td>${hasZeroData ? formatNum(totalComplete, 0) : '…'}</td>
-        <td>${hasZeroData && totalBlocks ? fmtPct(totalComplete / totalBlocks) : '…'}</td>
-        <td>${hasZeroData ? formatNum(totalUnmapped, 0) : '…'}</td>
-        <td>${hasZeroData && totalBlocks ? fmtPct(totalUnmapped / totalBlocks) : '…'}</td>
-      </tr>
+    summaryStateTotalsEl.innerHTML = `
+      <caption>California</caption>
+      <tbody>
+        <tr><td class="label">Blocks</td><td class="value">${formatNum(totalBlocks, 0)}</td></tr>
+        <tr><td class="label">Complete #</td><td class="value">${hasZeroData ? formatNum(totalComplete, 0) : '…'}</td></tr>
+        <tr><td class="label">Complete %</td><td class="value">${hasZeroData && totalBlocks ? fmtPct(totalComplete / totalBlocks) : '…'}</td></tr>
+      </tbody>
     `;
     renderSummaryHeaders();
   }
@@ -3068,11 +3110,13 @@
     const btn = ev.currentTarget;
     const original = btn.textContent;
     btn.textContent = '…';
-    const wrap = document.querySelector('#summaryModal .summary-table-wrap');
+    const root = document.getElementById('summaryExportRoot');
+    const wrap = root && root.querySelector('.summary-table-wrap');
 
     const renderCanvas = async () => {
       const html2canvas = await loadHtml2Canvas();
-      if (!wrap) throw new Error('table wrap missing');
+      if (!root || !wrap) throw new Error('export root missing');
+      // Temporarily un-clip the inner table-wrap so html2canvas captures every row.
       const prev = {
         maxHeight: wrap.style.maxHeight,
         overflow: wrap.style.overflow,
@@ -3081,12 +3125,12 @@
       wrap.style.maxHeight = 'none';
       wrap.style.overflow = 'visible';
       wrap.style.height = 'auto';
-      // Force layout flush so scrollHeight reflects the un-clipped table.
-      void wrap.offsetHeight;
-      const fullW = Math.max(wrap.scrollWidth, wrap.offsetWidth);
-      const fullH = Math.max(wrap.scrollHeight, wrap.offsetHeight);
+      // Force layout flush so scrollHeight reflects the un-clipped content.
+      void root.offsetHeight;
+      const fullW = Math.max(root.scrollWidth, root.offsetWidth);
+      const fullH = Math.max(root.scrollHeight, root.offsetHeight);
       try {
-        return await html2canvas(wrap, {
+        return await html2canvas(root, {
           backgroundColor: '#ffffff',
           scale: 2,
           useCORS: true,
