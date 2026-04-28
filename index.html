@@ -3081,12 +3081,21 @@
       wrap.style.maxHeight = 'none';
       wrap.style.overflow = 'visible';
       wrap.style.height = 'auto';
+      // Force layout flush so scrollHeight reflects the un-clipped table.
+      void wrap.offsetHeight;
+      const fullW = Math.max(wrap.scrollWidth, wrap.offsetWidth);
+      const fullH = Math.max(wrap.scrollHeight, wrap.offsetHeight);
       try {
         return await html2canvas(wrap, {
           backgroundColor: '#ffffff',
           scale: 2,
           useCORS: true,
-          windowWidth: wrap.scrollWidth,
+          width: fullW,
+          height: fullH,
+          windowWidth: fullW,
+          windowHeight: fullH,
+          scrollX: 0,
+          scrollY: 0,
         });
       } finally {
         wrap.style.maxHeight = prev.maxHeight;
