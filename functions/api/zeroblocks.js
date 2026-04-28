@@ -205,6 +205,8 @@ async function fetchFromWfs() {
     wfsUrl.searchParams.set('typeName', 'clo:BBA_CA_EFFORT_MAP');
     wfsUrl.searchParams.set('count', String(PAGE_SIZE));
     wfsUrl.searchParams.set('startIndex', String(startIndex));
+    // Required by GeoServer when paging a table without a primary key.
+    wfsUrl.searchParams.set('sortBy', 'block_code');
     wfsUrl.searchParams.set('CQL_FILTER', CQL);
     wfsUrl.searchParams.set('propertyName', 'block_code');
     wfsUrl.searchParams.set('outputFormat', 'application/json');
