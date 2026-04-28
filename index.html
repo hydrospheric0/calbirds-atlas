@@ -981,6 +981,15 @@
     .summary-check { color: #16a34a; }
     .summary-cross { color: #dc2626; }
     .summary-status:empty { display: none; }
+    .summary-table .summary-rownum,
+    .summary-table .summary-rownum-th {
+      color: #94a3b8;
+      font-weight: 600;
+      text-align: right;
+      width: 1.6rem;
+      cursor: default;
+    }
+    .summary-table .summary-rownum-th { background: #f1f5f9; }
 
     .info-defs {
       display: grid;
@@ -1269,6 +1278,7 @@
       <table class="summary-table" id="summaryTable">
         <thead>
           <tr>
+            <th class="summary-rownum-th">#</th>
             <th data-sort-key="county">County <span class="sort-arrow"></span></th>
             <th data-sort-key="total"># <span class="sort-arrow"></span></th>
             <th data-sort-key="complete"><span class="summary-icon summary-check">✓</span> # <span class="sort-arrow"></span></th>
@@ -2793,8 +2803,9 @@
     rows.sort((a, b) => compareSummaryRows(a, b, summaryState.key, summaryState.dir));
 
     const fmtPct = (v) => `${(v * 100).toFixed(1)} %`;
-    summaryBodyEl.innerHTML = rows.map((r) => `
+    summaryBodyEl.innerHTML = rows.map((r, i) => `
       <tr>
+        <td class="summary-rownum">${i + 1}</td>
         <td>${escHtml(r.county)}</td>
         <td>${formatNum(r.total, 0)}</td>
         <td>${hasZeroData ? formatNum(r.complete, 0) : '…'}</td>
@@ -2809,6 +2820,7 @@
     const totalComplete = totalBlocks - totalUnmapped;
     summaryFootEl.innerHTML = `
       <tr>
+        <td></td>
         <td>State total</td>
         <td>${formatNum(totalBlocks, 0)}</td>
         <td>${hasZeroData ? formatNum(totalComplete, 0) : '…'}</td>
