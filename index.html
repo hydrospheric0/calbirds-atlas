@@ -969,6 +969,30 @@
       border-bottom: 1px solid rgba(15,23,42,0.12);
     }
     .summary-grouprow th:empty { background: #f8fafc; }
+    .summary-table .col-rownum { width: 1.6rem; }
+    .summary-table .col-county { width: auto; }
+    .summary-table .col-num { width: 2.7rem; }
+    .info-modal-copy {
+      position: absolute;
+      top: 0.55rem;
+      right: 2.5rem;
+      width: 1.7rem;
+      height: 1.7rem;
+      border: 1px solid rgba(15,23,42,0.14);
+      border-radius: 999px;
+      background: #f8fafc;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+    }
+    .info-modal-copy.copied { background: #16a34a; color: #fff; border-color: #15803d; }
     .summary-table tbody tr:hover { background: rgba(15,23,42,0.03); }
     .summary-table tfoot td {
       position: sticky;
@@ -1003,11 +1027,6 @@
       padding-right: 0.2rem;
     }
     .summary-table .summary-rownum-th { background: #f1f5f9; }
-    /* Column widths via colgroup-like rules */
-    .summary-table th:nth-child(2),
-    .summary-table td:nth-child(2) { width: auto; }
-    .summary-table th:nth-child(n+3),
-    .summary-table td:nth-child(n+3) { width: 3.1rem; }
 
     .info-defs {
       display: grid;
@@ -1290,10 +1309,20 @@
   <div class="info-modal-backdrop" id="summaryModalBackdrop"></div>
   <div class="info-modal-panel" role="dialog" aria-modal="true" aria-labelledby="summaryModalTitle">
     <button id="summaryCloseBtn" class="info-modal-close" type="button" aria-label="Close">×</button>
+    <button id="summaryCopyBtn" class="info-modal-copy" type="button" aria-label="Copy table" title="Copy table">⧉</button>
     <h2 id="summaryModalTitle">Summary</h2>
     <div class="summary-status" id="summaryStatus"></div>
     <div class="summary-table-wrap">
       <table class="summary-table" id="summaryTable">
+        <colgroup>
+          <col class="col-rownum" />
+          <col class="col-county" />
+          <col class="col-num" />
+          <col class="col-num" />
+          <col class="col-num" />
+          <col class="col-num" />
+          <col class="col-num" />
+        </colgroup>
         <thead>
           <tr class="summary-grouprow">
             <th></th>
@@ -2882,6 +2911,69 @@
   });
   document.getElementById('summaryModalBackdrop').addEventListener('click', () => {
     summaryModal.setAttribute('hidden', 'hidden');
+  });
+
+  // Copy summary table as TSV (paste-friendly into Slack/Discord/Email/Sheets).
+  function buildSummaryTsv() {
+    const rows = getSummaryRows();
+    rows.sort((a, b) => compareSummaryRows(a, b, summaryState.key, summaryState.dir));
+    const hasZero = Boolean(countyCoverageByName?.zeroByCounty)
+      && Object.keys(countyCoverageByName.zeroByCounty).length > 0;
+    const fmtPct = (v) => `${(v * 100).toFixed(1)}%`;
+    const lines = [['#', 'County', 'Blocks', '✓ #', '✓ %', '✗ #', '✗ %'].join('\t')];
+    rows.forEach((r, i) => {
+      lines.push([
+        i + 1,
+        r.county,
+        r.total,
+        hasZero ? r.complete : '',
+        hasZero ? fmtPct(r.completePct) : '',
+        hasZero ? r.unmapped : '',
+        hasZero ? fmtPct(r.unmappedPct) : '',
+      ].join('\t'));
+    });
+    const totalBlocks = rows.reduce((s, r) => s + r.total, 0);
+    const totalUnmapped = rows.reduce((s, r) => s + r.unmapped, 0);
+    const totalComplete = totalBlocks - totalUnmapped;
+    lines.push([
+      '',
+      'State total',
+      totalBlocks,
+      hasZero ? totalComplete : '',
+      hasZero && totalBlocks ? fmtPct(totalComplete / totalBlocks) : '',
+      hasZero ? totalUnmapped : '',
+      hasZero && totalBlocks ? fmtPct(totalUnmapped / totalBlocks) : '',
+    ].join('\t'));
+    return lines.join('\n');
+  }
+
+  document.getElementById('summaryCopyBtn').addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget;
+    const text = buildSummaryTsv();
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      const original = btn.textContent;
+      btn.textContent = '✓';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.classList.remove('copied');
+      }, 1200);
+    } catch (e) {
+      btn.textContent = '!';
+      setTimeout(() => { btn.textContent = '⧉'; }, 1500);
+    }
   });
 </script>
 </body>
