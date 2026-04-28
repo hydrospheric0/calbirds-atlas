@@ -972,13 +972,7 @@
     .summary-table .col-rownum { width: 1.6rem; }
     .summary-table .col-county { width: auto; }
     .summary-table .col-num { width: 2.7rem; }
-    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key="total"],
-    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key="complete"],
-    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key="completePct"],
-    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key="unmapped"],
-    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key="unmappedPct"] {
-      text-align: center;
-    }
+    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key] { /* sticky already gives a positioning context */ }
     .info-modal-copy {
       position: absolute;
       top: 0.55rem;
@@ -1008,11 +1002,25 @@
       font-weight: 700;
       border-top: 1px solid rgba(15,23,42,0.12);
     }
+    .summary-table thead th { position: sticky; }
+    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key] {
+      padding-left: 0.18rem;
+      padding-right: 0.7rem;
+      text-align: center;
+    }
+    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key="county"] {
+      text-align: left;
+      padding-left: 0.32rem;
+    }
     .summary-table .sort-arrow {
-      display: inline-block;
-      width: 0.6rem;
+      position: absolute;
+      right: 0.18rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0.5rem;
       color: #0f172a;
-      font-size: 0.7rem;
+      font-size: 0.55rem;
+      pointer-events: none;
     }
     .summary-table th.sort-active { color: #0f172a; }
     .summary-icon {
@@ -2803,7 +2811,7 @@
   const summaryStatusEl = document.getElementById('summaryStatus');
   const summaryBodyEl = document.getElementById('summaryTableBody');
   const summaryFootEl = document.getElementById('summaryTableFoot');
-  const summaryHeaderRow = document.querySelector('#summaryTable thead tr');
+  const summaryHeaderRow = document.querySelector('#summaryTable thead tr:not(.summary-grouprow)');
   const summaryState = { key: 'county', dir: 'asc' };
 
   function getSummaryRows() {
