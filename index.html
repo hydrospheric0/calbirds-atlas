@@ -3034,12 +3034,13 @@
     const btn = ev.currentTarget;
     const original = btn.textContent;
     btn.textContent = '…';
+    const wrap = document.querySelector('#summaryModal .summary-table-wrap');
+    let prev = null;
     try {
       const html2canvas = await loadHtml2Canvas();
-      const wrap = document.querySelector('#summaryModal .summary-table-wrap');
       if (!wrap) throw new Error('table wrap missing');
       // Temporarily expand the wrapper so the full table renders (not just the visible scroll window).
-      const prev = {
+      prev = {
         maxHeight: wrap.style.maxHeight,
         overflow: wrap.style.overflow,
         height: wrap.style.height,
@@ -3056,21 +3057,51 @@
       wrap.style.maxHeight = prev.maxHeight;
       wrap.style.overflow = prev.overflow;
       wrap.style.height = prev.height;
+      prev = null;
+
+      const ts = new Date().toISOString().slice(0, 10);
+      const filename = `ca-atlas-summary-${ts}.jpg`;
+
+      // Try clipboard first so user can paste directly into a message.
+      // Note: the async Clipboard API only accepts image/png in most browsers,
+      // so we write a PNG blob to the clipboard but still offer a JPG download.
+      let copied = false;
+      if (navigator.clipboard && window.ClipboardItem) {
+        try {
+          const pngBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+          if (pngBlob) {
+            await navigator.clipboard.write([
+              new ClipboardItem({ 'image/png': pngBlob }),
+            ]);
+            copied = true;
+          }
+        } catch (clipErr) {
+          // Fall through to download.
+          console.info('Clipboard image write blocked, falling back to download:', clipErr.message);
+        }
+      }
+
+      // Always also trigger a JPG download so the user has a file copy.
       canvas.toBlob((blob) => {
-        if (!blob) throw new Error('blob missing');
+        if (!blob) return;
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        const ts = new Date().toISOString().slice(0, 10);
-        a.download = `ca-atlas-summary-${ts}.jpg`;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 5000);
       }, 'image/jpeg', 0.92);
-      btn.textContent = '✓';
-      setTimeout(() => { btn.textContent = original; }, 1200);
+
+      btn.textContent = copied ? '✓' : '⤓';
+      setTimeout(() => { btn.textContent = original; }, 1500);
     } catch (e) {
+      if (prev && wrap) {
+        wrap.style.maxHeight = prev.maxHeight;
+        wrap.style.overflow = prev.overflow;
+        wrap.style.height = prev.height;
+      }
       console.warn('Summary JPG export failed:', e);
       btn.textContent = '!';
       setTimeout(() => { btn.textContent = original; }, 1500);
