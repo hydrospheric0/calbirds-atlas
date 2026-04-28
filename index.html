@@ -972,6 +972,13 @@
     .summary-table .col-rownum { width: 1.6rem; }
     .summary-table .col-county { width: auto; }
     .summary-table .col-num { width: 2.7rem; }
+    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key="total"],
+    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key="complete"],
+    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key="completePct"],
+    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key="unmapped"],
+    .summary-table thead tr:not(.summary-grouprow) th[data-sort-key="unmappedPct"] {
+      text-align: center;
+    }
     .info-modal-copy {
       position: absolute;
       top: 0.55rem;
@@ -2856,7 +2863,7 @@
 
     rows.sort((a, b) => compareSummaryRows(a, b, summaryState.key, summaryState.dir));
 
-    const fmtPct = (v) => `${(v * 100).toFixed(1)} %`;
+    const fmtPct = (v) => `${(v * 100).toFixed(1)}`;
     summaryBodyEl.innerHTML = rows.map((r, i) => `
       <tr>
         <td class="summary-rownum">${i + 1}</td>
