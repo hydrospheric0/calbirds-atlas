@@ -1170,8 +1170,8 @@
 </head>
 <body>
 
-<!-- Location permission gate -->
-<div id="locPermGate">
+<!-- Location permission gate (hidden by default; shown only when we need to prompt) -->
+<div id="locPermGate" hidden>
   <div class="loc-gate-card">
     <h2>📍 Enable Location</h2>
     <p>Allow precise location access to center the map on your position and find the atlas block you're in.</p>
@@ -2303,7 +2303,7 @@
 
     // Confirm permission worked — mark as granted on first successful fix
     localStorage.setItem(LOC_PERM_KEY, 'granted');
-    locPermGate.setAttribute('hidden', 'hidden');
+    if (locPermGate) locPermGate.setAttribute('hidden', 'hidden');
 
     updateLocMarker(lat, lng, accuracy);
 
@@ -2323,9 +2323,10 @@
 
   function onPositionError(err) {
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
-    locPermGate.removeAttribute('hidden');
-    // Clear the stored grant so the gate shows again next load
+    // Only re-show the gate if the user actually denied — other errors (timeout,
+    // unavailable) shouldn't force them back through the prompt.
     if (err.code === 1 /* PERMISSION_DENIED */) {
+      if (locPermGate) locPermGate.removeAttribute('hidden');
       localStorage.removeItem(LOC_PERM_KEY);
       showPanelError('Location access denied. Use Allow Location Access above to try again, or Skip to browse the map.');
     } else if (err.code === 2 /* POSITION_UNAVAILABLE */) {
@@ -2461,44 +2462,60 @@
   });
 
   // ── LOCATION PERMISSION GATE ─────────────────────────────────
+  // Decision tree on load (gate is hidden by default in HTML):
+  //   1. Permissions API says 'granted'  → startTracking, never show gate.
+  //   2. Permissions API says 'denied'   → don't show gate (would be useless).
+  //   3. Permissions API says 'prompt'   → show gate IF user hasn't 'skipped'.
+  //   4. Permissions API unsupported     → fall back to localStorage:
+  //        'granted' → startTracking; 'skipped' → stay hidden; else → show gate.
   const locPermGate = document.getElementById('locPermGate');
+
+  function showGate() { locPermGate.removeAttribute('hidden'); }
+  function hideGate() { locPermGate.setAttribute('hidden', 'hidden'); }
 
   document.getElementById('locGateAllowBtn').addEventListener('click', () => {
     // Hide the in-app gate immediately so the browser's native permission
     // prompt doesn't stack on top of it (the double-popup problem).
-    locPermGate.setAttribute('hidden', 'hidden');
+    hideGate();
     startTracking();
   });
 
   document.getElementById('locGateSkipBtn').addEventListener('click', () => {
-    locPermGate.setAttribute('hidden', 'hidden');
+    hideGate();
     localStorage.setItem(LOC_PERM_KEY, 'skipped');
   });
 
-  // Auto-start GPS if we stored a previous grant, or if the browser already has permission
-  function maybeAutoStart() {
-    locPermGate.setAttribute('hidden', 'hidden');
-    startTracking();
-  }
-
   const storedPerm = localStorage.getItem(LOC_PERM_KEY);
-  if (storedPerm === 'skipped') {
-    locPermGate.setAttribute('hidden', 'hidden');
-  } else if (storedPerm === 'granted') {
-    maybeAutoStart();
-  } else if (storedPerm !== 'skipped' && navigator.permissions) {
-    // Check if browser-level permission is already granted (e.g. user already allowed on a prior site)
+
+  if (navigator.permissions && navigator.permissions.query) {
     navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-      if (result.state === 'granted') {
-        maybeAutoStart();
-      }
-      // If permission is granted externally while page is open and gate is still visible, auto-start.
-      result.addEventListener('change', () => {
-        if (result.state === 'granted' && !locPermGate.hasAttribute('hidden')) {
-          maybeAutoStart();
+      const apply = (state) => {
+        if (state === 'granted') {
+          // Browser remembers the grant — start silently, no gate.
+          localStorage.setItem(LOC_PERM_KEY, 'granted');
+          hideGate();
+          startTracking();
+        } else if (state === 'denied') {
+          hideGate();
+        } else { // 'prompt'
+          if (storedPerm === 'skipped') {
+            hideGate();
+          } else {
+            showGate();
+          }
         }
-      });
-    }).catch(() => { /* permissions API unsupported, leave gate visible */ });
+      };
+      apply(result.state);
+      result.addEventListener('change', () => apply(result.state));
+    }).catch(() => {
+      // Permissions API rejected — fall back to localStorage.
+      if (storedPerm === 'granted') startTracking();
+      else if (storedPerm !== 'skipped') showGate();
+    });
+  } else {
+    // No Permissions API — fall back to localStorage.
+    if (storedPerm === 'granted') startTracking();
+    else if (storedPerm !== 'skipped') showGate();
   }
 
   // ── COUNTY OUTLINES (zoom ≥ 10) ──────────────────────────────
