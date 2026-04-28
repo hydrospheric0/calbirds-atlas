@@ -937,7 +937,7 @@
     }
     .summary-table th,
     .summary-table td {
-      padding: 0.22rem 0.28rem;
+      padding: 0.22rem 0.18rem;
       text-align: right;
       border-bottom: 1px solid rgba(15,23,42,0.06);
       white-space: nowrap;
@@ -969,9 +969,10 @@
       border-bottom: 1px solid rgba(15,23,42,0.12);
     }
     .summary-grouprow th:empty { background: #f8fafc; }
-    .summary-table .col-rownum { width: 1.6rem; }
+    .summary-table .col-rownum { width: 1.4rem; }
     .summary-table .col-county { width: auto; }
-    .summary-table .col-num { width: 2.7rem; }
+    .summary-table .col-total { width: 2.5rem; }
+    .summary-table .col-num { width: 2.2rem; }
     .summary-table thead tr:not(.summary-grouprow) th[data-sort-key] { /* sticky already gives a positioning context */ }
     .info-modal-copy {
       position: absolute;
@@ -1026,8 +1027,8 @@
     }
     .summary-table thead th { position: sticky; }
     .summary-table thead tr:not(.summary-grouprow) th[data-sort-key] {
-      padding-left: 0.18rem;
-      padding-right: 0.7rem;
+      padding-left: 0.1rem;
+      padding-right: 0.55rem;
       text-align: center;
     }
     .summary-table thead tr:not(.summary-grouprow) th[data-sort-key="county"] {
@@ -1355,7 +1356,7 @@
         <colgroup>
           <col class="col-rownum" />
           <col class="col-county" />
-          <col class="col-num" />
+          <col class="col-total" />
           <col class="col-num" />
           <col class="col-num" />
           <col class="col-num" />
@@ -1370,7 +1371,7 @@
             <th colspan="2" class="summary-group summary-group-cross">In Progress</th>
           </tr>
           <tr>
-            <th class="summary-rownum-th">#</th>
+            <th class="summary-rownum-th"></th>
             <th data-sort-key="county">County <span class="sort-arrow"></span></th>
             <th data-sort-key="total"># <span class="sort-arrow"></span></th>
             <th data-sort-key="complete"># <span class="summary-icon summary-check">✓</span> <span class="sort-arrow"></span></th>
