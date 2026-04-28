@@ -879,6 +879,12 @@
     .info-modal-panel a { color: var(--accent); }
 
     /* ── SUMMARY MODAL ──────────────────────────────────────── */
+    #summaryModal {
+      position: fixed;
+      inset: 0;
+      z-index: 9000;
+    }
+    #summaryModal[hidden] { display: none !important; }
     #summaryModal .info-modal-panel {
       width: min(34rem, 94vw);
       max-height: 88dvh;
