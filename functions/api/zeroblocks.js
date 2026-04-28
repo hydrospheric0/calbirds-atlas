@@ -10,9 +10,13 @@
 
 const WFS_BASE = 'https://geowebcache.ornith.cornell.edu/geoserver/wfs';
 const PROJ_PERIOD = 'EBIRD_ATL_CA_2026';
-const KV_KEY = 'zeroblocks_v1';
+// v2: tightened CQL — exclude blocks with any effort, not just complete-checklist count.
+const KV_KEY = 'zeroblocks_v2';
 const STALE_AFTER_S = 12 * 3600; // serve stale, refresh in background after 12 h
 const WFS_TIMEOUT_MS = 25000;
+// A block is "zero effort" only when no complete checklists, no coded species,
+// AND no logged hours. This excludes blocks with incidental/incomplete checklists.
+const ZERO_EFFORT_CQL_BASE = `num_complete=0 AND num_coded=0 AND total_hours=0`;
 
 const ALLOWED_ORIGINS = [
   'https://calbirds.org',
@@ -155,7 +159,7 @@ async function writeToKv(kv) {
 }
 
 async function fetchZeroBlockTotalFromWfs() {
-  const CQL = `num_complete=0 AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
+  const CQL = `${ZERO_EFFORT_CQL_BASE} AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
   const wfsUrl = new URL(WFS_BASE);
   wfsUrl.searchParams.set('SERVICE', 'WFS');
   wfsUrl.searchParams.set('VERSION', '2.0.0');
@@ -188,7 +192,7 @@ async function fetchZeroBlockTotalFromWfs() {
 
 async function fetchFromWfs() {
   const PAGE_SIZE = 2000;
-  const CQL = `num_complete=0 AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
+  const CQL = `${ZERO_EFFORT_CQL_BASE} AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
   const all = [];
   const seen = new Set();
   let startIndex = 0;

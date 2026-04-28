@@ -64,7 +64,9 @@ export async function onRequestGet(context) {
 
   // GeoServer CQL BBOX uses (lng, lat) / (x, y) order regardless of EPSG:4326 axis convention
   let cql = `BBOX(geometry,${sMinLng},${sMinLat},${sMaxLng},${sMaxLat},'EPSG:4326') AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
-  if (zeroOnly) cql += ` AND num_complete = 0`;
+  // "Zero effort" = no complete checklists, no coded species, no logged hours.
+  // Without this, blocks with one incidental/incomplete checklist still match.
+  if (zeroOnly) cql += ` AND num_complete=0 AND num_coded=0 AND total_hours=0`;
 
   const wfsUrl = new URL(WFS_BASE);
   wfsUrl.searchParams.set('SERVICE', 'WFS');

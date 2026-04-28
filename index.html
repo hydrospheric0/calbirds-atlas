@@ -358,9 +358,11 @@
         z-index: 1050;
         display: flex;
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
         gap: 0.38rem;
         pointer-events: none;
+        width: max-content;
+        max-width: calc(100vw - 1rem);
       }
       #mapQuickLegend {
         display: flex;
@@ -412,7 +414,8 @@
         box-shadow: 0 6px 18px rgba(15,23,42,0.24);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
-        min-width: 7.2rem;
+        width: 100%;
+        box-sizing: border-box;
       }
       #mapProgressBubble[hidden] {
         display: none;
@@ -998,6 +1001,7 @@
       <span class="sub">effort</span>
     </span>
 
+    <button id="summaryBtn" type="button" aria-label="State summary" title="State summary">Summary</button>
     <button id="infoBtn" type="button" aria-label="About" title="About this app">i</button>
 
   </header>
@@ -1022,6 +1026,7 @@
         <span class="progress-bubble-label">Progress</span>
         <span class="progress-bubble-value" id="progressBubbleValue">… / …</span>
         <span class="progress-bubble-meta">blocks with data</span>
+        <span class="progress-bubble-meta" id="progressBubblePct">… complete</span>
       </div>
       <div id="mapFetchLoader" aria-live="polite" hidden>
         <span class="map-fetch-loader-spinner" aria-hidden="true"></span>
@@ -1149,6 +1154,30 @@
   </div>
 </div>
 
+<!-- Summary modal: state-wide county coverage table -->
+<div id="summaryModal" hidden>
+  <div class="info-modal-backdrop" id="summaryModalBackdrop"></div>
+  <div class="info-modal-panel" role="dialog" aria-modal="true" aria-labelledby="summaryModalTitle">
+    <button id="summaryCloseBtn" class="info-modal-close" type="button" aria-label="Close">×</button>
+    <h2 id="summaryModalTitle">State summary by county</h2>
+    <div class="summary-status" id="summaryStatus">Loading…</div>
+    <div class="summary-table-wrap">
+      <table class="summary-table" id="summaryTable">
+        <thead>
+          <tr>
+            <th data-sort-key="county">County <span class="sort-arrow"></span></th>
+            <th data-sort-key="total">Blocks <span class="sort-arrow"></span></th>
+            <th data-sort-key="completePct">Complete % <span class="sort-arrow"></span></th>
+            <th data-sort-key="unmappedPct">Unmapped % <span class="sort-arrow"></span></th>
+          </tr>
+        </thead>
+        <tbody id="summaryTableBody"></tbody>
+        <tfoot id="summaryTableFoot"></tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   // ── CONFIG ────────────────────────────────────────────────────
@@ -1164,7 +1193,6 @@
 
   // ── CACHED FETCH (Cache API + network fallback) ───────────────
   const ATLAS_CACHE = 'atlas-data-v2';
-  const ATLAS_AREA_CACHE = 'atlas-area-v1';
   const ATLAS_CACHE_TTL = 24 * 3600 * 1000; // 1 day client-side
   const atlasInFlightFetches = new Map();
 
@@ -1561,20 +1589,17 @@
     if (hotspotLayer && map.hasLayer(hotspotLayer)) map.removeLayer(hotspotLayer);
   }
 
-  // ── NEARBY ZERO-EFFORT (buffered tile cache) ─────────────────
-  // Fetches zero-effort blocks in buffered 1° tiles and caches them for a day.
-  // Small pans reuse the same tile set; only newly exposed tiles are requested.
+  // ── NEARBY ZERO-EFFORT ───────────────────────────────────────
+  // Renders zero-effort blocks client-side by intersecting the cached
+  // statewide /api/zeroblocks code list with local block geometry from
+  // ca_bba_blocks_light.geojson. No per-tile WFS calls; pans are instant.
   let zeroEffortEnabled = false;
   const ZERO_EFFORT_MIN_ZOOM = BLOCK_DETAIL_MIN_ZOOM;
   const ZERO_EFFORT_AUTO_COUNTY_MAX_BLOCKS = 500;
-  const ZERO_TILE_SIZE_DEGREES = 1;
-  const ZERO_TILE_BUFFER_PAD = 0.45;
-  const ZERO_TILE_CACHE_TTL = 24 * 3600 * 1000;
+  const ZERO_VIEWPORT_BUFFER_PAD = 0.45;
   let zeroFetchInFlight  = false;
-  let zeroFetchQueued    = false;  // viewport changed during an in-flight fetch
-  let zeroViewportTileKeys = [];
+  let zeroFetchQueued    = false;  // viewport changed during an in-flight build
   let zeroViewportFeatureMap = new Map();
-  let zeroTileFeatureCache = new Map();
   let zeroCountyFeatureMap   = new Map();
   let zeroCountyFeatureCache = new Map();
   let zeroCountyLoadToken    = 0;
@@ -1608,58 +1633,6 @@
     return mapByCode;
   }
 
-  function roundZeroTileCoord(value) {
-    return Number(value.toFixed(4));
-  }
-
-  function buildZeroTileDefs(bounds) {
-    const padded = bounds.pad(ZERO_TILE_BUFFER_PAD);
-    const minLat = Math.floor(padded.getSouth() / ZERO_TILE_SIZE_DEGREES) * ZERO_TILE_SIZE_DEGREES;
-    const maxLat = Math.ceil(padded.getNorth() / ZERO_TILE_SIZE_DEGREES) * ZERO_TILE_SIZE_DEGREES;
-    const minLng = Math.floor(padded.getWest() / ZERO_TILE_SIZE_DEGREES) * ZERO_TILE_SIZE_DEGREES;
-    const maxLng = Math.ceil(padded.getEast() / ZERO_TILE_SIZE_DEGREES) * ZERO_TILE_SIZE_DEGREES;
-    const defs = [];
-
-    for (let lat = minLat; lat < maxLat; lat = roundZeroTileCoord(lat + ZERO_TILE_SIZE_DEGREES)) {
-      for (let lng = minLng; lng < maxLng; lng = roundZeroTileCoord(lng + ZERO_TILE_SIZE_DEGREES)) {
-        const south = roundZeroTileCoord(lat);
-        const west = roundZeroTileCoord(lng);
-        const north = roundZeroTileCoord(lat + ZERO_TILE_SIZE_DEGREES);
-        const east = roundZeroTileCoord(lng + ZERO_TILE_SIZE_DEGREES);
-        const latIndex = Math.round(south / ZERO_TILE_SIZE_DEGREES);
-        const lngIndex = Math.round(west / ZERO_TILE_SIZE_DEGREES);
-        defs.push({
-          key: `${latIndex}:${lngIndex}`,
-          bbox: `${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)}`,
-          cacheKey: `/__atlas_cache__/nearbyblocks-zero/v1/${latIndex}_${lngIndex}.json`,
-        });
-      }
-    }
-
-    return defs;
-  }
-
-  function storeZeroTileFeatures(tileKey, features) {
-    zeroTileFeatureCache.set(tileKey, featureMapFromFeatures(features));
-  }
-
-  function syncZeroViewportFeatureMap(tileKeys = zeroViewportTileKeys) {
-    const featuresByCode = new Map();
-    for (const tileKey of tileKeys) {
-      const tileFeatures = zeroTileFeatureCache.get(tileKey);
-      if (!tileFeatures) continue;
-      for (const [code, feature] of tileFeatures) {
-        if (!featuresByCode.has(code)) featuresByCode.set(code, feature);
-      }
-    }
-    zeroViewportFeatureMap = featuresByCode;
-  }
-
-  async function hasFreshZeroTile(def) {
-    if (zeroTileFeatureCache.has(def.key)) return true;
-    return hasFreshCacheEntry(ATLAS_AREA_CACHE, def.cacheKey, ZERO_TILE_CACHE_TTL);
-  }
-
   function updateZeroLegendText() {
     const el = document.getElementById('zeroLegendText');
     if (!el) return;
@@ -1684,6 +1657,7 @@
   function updateProgressBubble() {
     const bubbleEl = document.getElementById('mapProgressBubble');
     const valueEl = document.getElementById('progressBubbleValue');
+    const pctEl = document.getElementById('progressBubblePct');
     if (!bubbleEl || !valueEl) return;
 
     const stateTotal = countyCoverageByName?.stateTotal || 0;
@@ -1697,27 +1671,19 @@
     if (Number.isFinite(stateZeroTotal)) {
       const blocksWithData = Math.max(0, stateTotal - stateZeroTotal);
       valueEl.textContent = `${formatNum(blocksWithData, 0)} / ${formatNum(stateTotal, 0)}`;
+      if (pctEl) pctEl.textContent = `${formatPercent(blocksWithData, stateTotal)} complete`;
     } else {
       valueEl.textContent = `… / ${formatNum(stateTotal, 0)}`;
+      if (pctEl) pctEl.textContent = '… complete';
     }
   }
 
   function isZeroEffortFeature(feature) {
-    const value = feature?.properties?.num_complete;
-    return Number(value) === 0;
-  }
-
-  async function fetchZeroEffortGeojson(bbox, cacheOptions = null) {
-    try {
-      return await cachedFetch(`/api/nearbyblocks?bbox=${bbox}&zeroOnly=1`, 30000, cacheOptions || {});
-    } catch (err) {
-      console.warn('Zero effort zeroOnly fetch failed, retrying with client-side filter:', err.message);
-      const geojson = await cachedFetch(`/api/nearbyblocks?bbox=${bbox}`, 30000);
-      return {
-        type: 'FeatureCollection',
-        features: (geojson.features || []).filter(isZeroEffortFeature),
-      };
-    }
+    const p = feature?.properties || {};
+    // Mirror the server-side CQL: num_complete=0 AND num_coded=0 AND total_hours=0.
+    return Number(p.num_complete) === 0
+        && Number(p.num_coded) === 0
+        && Number(p.total_hours || 0) === 0;
   }
 
   async function ensureZeroBlockCodeSet() {
@@ -1770,11 +1736,14 @@
           const rawCode = feature?.properties?.blck_cd || feature?.properties?.block_code || '';
           const code = /^[A-Za-z0-9]+$/.test(rawCode) ? rawCode : '';
           if (!code || !feature.geometry) continue;
+          // Pre-compute a bbox so viewport filtering is O(N) over numbers, not coords.
+          const bbox = computeFeatureBBox(feature.geometry);
           microBlockFeatureMap.set(code, {
             type: 'Feature',
             id: code,
             properties: { block_code: code },
             geometry: feature.geometry,
+            _bbox: bbox,
           });
         }
         return microBlockFeatureMap;
@@ -1784,6 +1753,24 @@
       });
     }
     return microBlockFeaturePromise;
+  }
+
+  function computeFeatureBBox(geometry) {
+    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+    const visit = (coords) => {
+      if (typeof coords[0] === 'number') {
+        const [x, y] = coords;
+        if (x < minLng) minLng = x;
+        if (x > maxLng) maxLng = x;
+        if (y < minLat) minLat = y;
+        if (y > maxLat) maxLat = y;
+        return;
+      }
+      for (const c of coords) visit(c);
+    };
+    if (geometry?.coordinates) visit(geometry.coordinates);
+    if (!Number.isFinite(minLng)) return null;
+    return { minLng, minLat, maxLng, maxLat };
   }
 
   async function loadCountyZeroEffortFeatures(county) {
@@ -1880,37 +1867,42 @@
     zeroFetchQueued = false;
     zeroLastFetchFailed = false;
     updateZeroLegendText();
-    let loaderShown = false;
 
-    const tileDefs = buildZeroTileDefs(map.getBounds());
-    zeroViewportTileKeys = tileDefs.map((def) => def.key);
-    syncZeroViewportFeatureMap();
-    rebuildZeroEffortLayer();
+    // Show a loader only on first load while statewide code list / local
+    // geometry are still being fetched. Subsequent pans are instant.
+    const dataReady = Boolean(zeroBlockCodeSet) && Boolean(microBlockFeatureMap);
+    let loaderShown = false;
+    if (!dataReady) {
+      loaderShown = true;
+      showMapFetchLoader('Loading nearby blocks…');
+    }
 
     try {
-      const tileDefsToLoad = tileDefs.filter((def) => !zeroTileFeatureCache.has(def.key));
-      if (tileDefsToLoad.length > 0) {
-        const freshStates = await Promise.all(tileDefsToLoad.map((def) => hasFreshZeroTile(def)));
-        if (freshStates.some((isFresh) => !isFresh)) {
-          loaderShown = true;
-          showMapFetchLoader('Loading nearby blocks…');
-        }
+      const [zeroCodes, featuresByCode] = await Promise.all([
+        ensureZeroBlockCodeSet(),
+        ensureMicroBlockFeatureMap(),
+      ]);
 
-        await Promise.all(tileDefsToLoad.map(async (def) => {
-          const geojson = await fetchZeroEffortGeojson(def.bbox, {
-            cacheName: ATLAS_AREA_CACHE,
-            cacheKey: def.cacheKey,
-            ttlMs: ZERO_TILE_CACHE_TTL,
-          });
-          storeZeroTileFeatures(def.key, geojson.features || []);
-        }));
+      const padded = map.getBounds().pad(ZERO_VIEWPORT_BUFFER_PAD);
+      const south = padded.getSouth();
+      const north = padded.getNorth();
+      const west  = padded.getWest();
+      const east  = padded.getEast();
+
+      const featuresByCodeOut = new Map();
+      for (const code of zeroCodes) {
+        const feature = featuresByCode.get(code);
+        if (!feature) continue;
+        const b = feature._bbox;
+        if (!b) continue;
+        if (b.maxLat < south || b.minLat > north || b.maxLng < west || b.minLng > east) continue;
+        featuresByCodeOut.set(code, feature);
       }
-
-      syncZeroViewportFeatureMap();
+      zeroViewportFeatureMap = featuresByCodeOut;
       rebuildZeroEffortLayer();
     } catch (e) {
       zeroLastFetchFailed = true;
-      console.warn('Zero effort fetch failed:', e.message);
+      console.warn('Zero effort viewport build failed:', e.message);
     } finally {
       if (loaderShown) hideMapFetchLoader();
       zeroFetchInFlight = false;
@@ -1935,6 +1927,9 @@
 
   function addZeroEffortLayer() {
     zeroEffortEnabled = true;
+    // Kick off local geometry fetch in parallel with the statewide code list
+    // so the first viewport build doesn't have to wait serially.
+    ensureMicroBlockFeatureMap().catch((e) => console.warn('Micro block load failed:', e.message));
     maybeLoadActiveCountyZeroEffort(currentBlockCounty);
     updateZeroEffortVisibility();
   }
@@ -2394,58 +2389,28 @@
     return countyCoverageByName?.zeroByCounty?.[countyName] || 0;
   }
 
-  function getCountyCompletedBlockTotal(county) {
-    const total = getCountyBlockTotal(county);
-    const missing = getCountyMissingBlockTotal(county);
-    return Math.max(0, total - missing);
-  }
-
-  function renderCountyCoverageTile(county, completedTotal = null, total = null, state = 'ready') {
-    const tileEl = document.getElementById('countyCoverageTile');
-    if (!tileEl) return;
-    const countyName = String(county || '').trim();
-    if (!countyName) {
-      tileEl.innerHTML = '<div class="stat-label">County blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
-      return;
-    }
-    const countyTotal = Number(total ?? getCountyBlockTotal(countyName)) || 0;
-    if (!countyTotal) {
-      tileEl.innerHTML = '<div class="stat-label">County blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
-      return;
-    }
-    if (state === 'loading') {
-      tileEl.innerHTML = `<div class="stat-label">County blocks</div><div class="stat-value">…/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Loading completion</div>`;
-      return;
-    }
-    if (state === 'error') {
-      tileEl.innerHTML = `<div class="stat-label">County blocks</div><div class="stat-value">—/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Completion unavailable</div>`;
-      return;
-    }
-    tileEl.innerHTML = `<div class="stat-label">County blocks</div><div class="stat-value">${formatNum(completedTotal, 0)}/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">${formatPercent(completedTotal, countyTotal)} completed</div>`;
-  }
-
   function renderCountyMissingTile(county, missingTotal = null, total = null, state = 'ready') {
     const tileEl = document.getElementById('countyMissingTile');
     if (!tileEl) return;
     const countyName = String(county || '').trim();
     if (!countyName) {
-      tileEl.innerHTML = '<div class="stat-label">Unmapped blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
+      tileEl.innerHTML = '<div class="stat-label">County blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
       return;
     }
     const countyTotal = Number(total ?? getCountyBlockTotal(countyName)) || 0;
     if (!countyTotal) {
-      tileEl.innerHTML = '<div class="stat-label">Unmapped blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
+      tileEl.innerHTML = '<div class="stat-label">County blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
       return;
     }
     if (state === 'loading') {
-      tileEl.innerHTML = `<div class="stat-label">Unmapped blocks</div><div class="stat-value">…/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Loading blocks</div>`;
+      tileEl.innerHTML = `<div class="stat-label">County blocks</div><div class="stat-value">…/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Loading blocks</div>`;
       return;
     }
     if (state === 'error') {
-      tileEl.innerHTML = `<div class="stat-label">Unmapped blocks</div><div class="stat-value">—/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Count unavailable</div>`;
+      tileEl.innerHTML = `<div class="stat-label">County blocks</div><div class="stat-value">—/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Count unavailable</div>`;
       return;
     }
-    tileEl.innerHTML = `<div class="stat-label">Unmapped blocks</div><div class="stat-value">${formatNum(missingTotal, 0)}/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">${formatPercent(missingTotal, countyTotal)} unmapped</div>`;
+    tileEl.innerHTML = `<div class="stat-label">County blocks</div><div class="stat-value">${formatNum(missingTotal, 0)}/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">${formatPercent(missingTotal, countyTotal)} unmapped</div>`;
   }
 
   async function updateCountySummaryTiles(county) {
@@ -2454,20 +2419,16 @@
     if (!countyName) return;
     const total = getCountyBlockTotal(countyName);
 
-    renderCountyCoverageTile(countyName, null, total, 'loading');
     renderCountyMissingTile(countyName, null, total, 'loading');
 
     try {
       await ensureZeroBlockCodeSet();
       if (renderGen !== countyCoverageRenderGen) return;
       const missing = getCountyMissingBlockTotal(countyName);
-      const completed = getCountyCompletedBlockTotal(countyName);
-      renderCountyCoverageTile(countyName, completed, total);
       renderCountyMissingTile(countyName, missing, total);
     } catch (e) {
       if (renderGen !== countyCoverageRenderGen) return;
       console.warn('County zero-block count load failed:', e.message);
-      renderCountyCoverageTile(countyName, null, total, 'error');
       renderCountyMissingTile(countyName, null, total, 'error');
     }
   }
@@ -2556,13 +2517,8 @@
           <div class="stat-value">View</div>
           <div class="stat-subvalue">Atlas block page ↗</div>
         </div>
-        <div class="stat-card" id="countyCoverageTile">
-          <div class="stat-label">County blocks</div>
-          <div class="stat-value">…</div>
-          <div class="stat-subvalue">Loading</div>
-        </div>
         <div class="stat-card stat-card-unmapped" id="countyMissingTile">
-          <div class="stat-label">Unmapped blocks</div>
+          <div class="stat-label">County blocks</div>
           <div class="stat-value">…</div>
           <div class="stat-subvalue">Loading</div>
         </div>
@@ -2658,6 +2614,124 @@
   });
   document.getElementById('infoModalBackdrop').addEventListener('click', () => {
     infoModal.setAttribute('hidden', 'hidden');
+  });
+
+  // ── SUMMARY MODAL (state-wide sortable county table) ─────────
+  const summaryModal = document.getElementById('summaryModal');
+  const summaryStatusEl = document.getElementById('summaryStatus');
+  const summaryBodyEl = document.getElementById('summaryTableBody');
+  const summaryFootEl = document.getElementById('summaryTableFoot');
+  const summaryHeaderRow = document.querySelector('#summaryTable thead tr');
+  const summaryState = { key: 'county', dir: 'asc' };
+
+  function getSummaryRows() {
+    const totals = countyCoverageByName?.totalByCounty || {};
+    const zeroes = countyCoverageByName?.zeroByCounty || {};
+    return Object.keys(totals).map((county) => {
+      const total = Number(totals[county]) || 0;
+      const unmapped = Number(zeroes[county]) || 0;
+      const complete = Math.max(0, total - unmapped);
+      return {
+        county,
+        total,
+        unmapped,
+        complete,
+        completePct: total ? complete / total : 0,
+        unmappedPct: total ? unmapped / total : 0,
+      };
+    });
+  }
+
+  function compareSummaryRows(a, b, key, dir) {
+    const sign = dir === 'asc' ? 1 : -1;
+    if (key === 'county') return sign * a.county.localeCompare(b.county);
+    const av = a[key] ?? 0;
+    const bv = b[key] ?? 0;
+    if (av === bv) return a.county.localeCompare(b.county);
+    return sign * (av - bv);
+  }
+
+  function renderSummaryHeaders() {
+    summaryHeaderRow.querySelectorAll('th').forEach((th) => {
+      const key = th.dataset.sortKey;
+      const arrow = th.querySelector('.sort-arrow');
+      if (key === summaryState.key) {
+        th.classList.add('sort-active');
+        if (arrow) arrow.textContent = summaryState.dir === 'asc' ? '▲' : '▼';
+      } else {
+        th.classList.remove('sort-active');
+        if (arrow) arrow.textContent = '';
+      }
+    });
+  }
+
+  function renderSummary() {
+    const rows = getSummaryRows();
+    if (!rows.length) {
+      summaryStatusEl.textContent = 'No county data available yet.';
+      summaryBodyEl.innerHTML = '';
+      summaryFootEl.innerHTML = '';
+      renderSummaryHeaders();
+      return;
+    }
+
+    const hasZeroData = Boolean(countyCoverageByName?.zeroByCounty)
+      && Object.keys(countyCoverageByName.zeroByCounty).length > 0;
+    summaryStatusEl.textContent = hasZeroData
+      ? `${rows.length} counties · sorted by ${summaryState.key === 'county' ? 'name' : summaryState.key.replace('Pct', ' %')}`
+      : 'Loading completion data…';
+
+    rows.sort((a, b) => compareSummaryRows(a, b, summaryState.key, summaryState.dir));
+
+    const fmtPct = (v) => `${(v * 100).toFixed(1)} %`;
+    summaryBodyEl.innerHTML = rows.map((r) => `
+      <tr>
+        <td>${escHtml(r.county)}</td>
+        <td>${formatNum(r.total, 0)}</td>
+        <td>${hasZeroData ? fmtPct(r.completePct) : '…'}</td>
+        <td>${hasZeroData ? fmtPct(r.unmappedPct) : '…'}</td>
+      </tr>
+    `).join('');
+
+    const totalBlocks = rows.reduce((s, r) => s + r.total, 0);
+    const totalUnmapped = rows.reduce((s, r) => s + r.unmapped, 0);
+    const totalComplete = totalBlocks - totalUnmapped;
+    summaryFootEl.innerHTML = `
+      <tr>
+        <td>State total</td>
+        <td>${formatNum(totalBlocks, 0)}</td>
+        <td>${hasZeroData && totalBlocks ? fmtPct(totalComplete / totalBlocks) : '…'}</td>
+        <td>${hasZeroData && totalBlocks ? fmtPct(totalUnmapped / totalBlocks) : '…'}</td>
+      </tr>
+    `;
+    renderSummaryHeaders();
+  }
+
+  summaryHeaderRow.addEventListener('click', (ev) => {
+    const th = ev.target.closest('th');
+    if (!th || !th.dataset.sortKey) return;
+    const key = th.dataset.sortKey;
+    if (summaryState.key === key) {
+      summaryState.dir = summaryState.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      summaryState.key = key;
+      // Default: name asc, numeric desc (largest first).
+      summaryState.dir = key === 'county' ? 'asc' : 'desc';
+    }
+    renderSummary();
+  });
+
+  document.getElementById('summaryBtn').addEventListener('click', () => {
+    summaryModal.removeAttribute('hidden');
+    renderSummary();
+    // Refresh once zero-block counts arrive.
+    ensureZeroBlockCodeSet().then(() => renderSummary()).catch(() => renderSummary());
+  });
+  document.getElementById('summaryCloseBtn').addEventListener('click', () => {
+    summaryModal.setAttribute('hidden', 'hidden');
+  });
+  document.getElementById('summaryModalBackdrop').addEventListener('click', () => {
+    summaryModal.setAttribute('hidden', 'hidden');
   });
 </script>
 </body>
