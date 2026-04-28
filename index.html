@@ -2944,6 +2944,8 @@
     renderSummary();
     // Refresh once zero-block counts arrive.
     ensureZeroBlockCodeSet().then(() => renderSummary()).catch(() => renderSummary());
+    // Preload html2canvas so the image button is instant on click (preserves user-gesture for clipboard.write).
+    loadHtml2Canvas().catch(() => { /* ignore — fallback handled in click handler */ });
   });
   document.getElementById('summaryCloseBtn').addEventListener('click', () => {
     summaryModal.setAttribute('hidden', 'hidden');
@@ -3036,8 +3038,7 @@
     btn.textContent = '…';
     const wrap = document.querySelector('#summaryModal .summary-table-wrap');
 
-    // Render the table to a PNG blob. Returns a Promise<Blob>.
-    const renderPngBlob = async () => {
+    const renderCanvas = async () => {
       const html2canvas = await loadHtml2Canvas();
       if (!wrap) throw new Error('table wrap missing');
       const prev = {
@@ -3048,9 +3049,8 @@
       wrap.style.maxHeight = 'none';
       wrap.style.overflow = 'visible';
       wrap.style.height = 'auto';
-      let canvas;
       try {
-        canvas = await html2canvas(wrap, {
+        return await html2canvas(wrap, {
           backgroundColor: '#ffffff',
           scale: 2,
           useCORS: true,
@@ -3061,57 +3061,85 @@
         wrap.style.overflow = prev.overflow;
         wrap.style.height = prev.height;
       }
-      btn._lastCanvas = canvas;
-      return new Promise((resolve, reject) => {
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('blob missing'))), 'image/png');
-      });
     };
 
-    // Call clipboard.write synchronously with a Promise<Blob> — this preserves
-    // the user-gesture context (required by Safari/Chrome).
-    let clipboardOk = false;
-    let clipboardPromise = null;
-    if (navigator.clipboard && window.ClipboardItem) {
+    // Fast-path: if html2canvas is already loaded (we preload it on modal open),
+    // we can synchronously chain clipboard.write inside the gesture using Promise<Blob>.
+    const html2canvasReady = Boolean(window.html2canvas);
+    let clipboardWritePromise = null;
+    let canvasPromise = null;
+
+    if (html2canvasReady && navigator.clipboard && window.ClipboardItem) {
+      canvasPromise = renderCanvas();
+      const pngBlobPromise = canvasPromise.then(
+        (canvas) => new Promise((resolve, reject) => {
+          canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('png blob missing'))), 'image/png');
+        })
+      );
       try {
-        const pngPromise = renderPngBlob();
-        clipboardPromise = navigator.clipboard.write([
-          new ClipboardItem({ 'image/png': pngPromise }),
-        ]).then(() => { clipboardOk = true; }).catch((err) => {
-          console.info('Clipboard image write rejected:', err.message);
-        });
+        clipboardWritePromise = navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': pngBlobPromise }),
+        ]);
       } catch (err) {
-        console.info('Clipboard write threw synchronously:', err.message);
+        // Some browsers throw if Promise<Blob> isn't accepted. Fall back to resolved-blob path below.
+        console.info('Clipboard sync write threw, will retry async:', err.message);
       }
     }
 
-    // Always also produce a JPG download as a fallback.
     (async () => {
       try {
-        await (clipboardPromise || Promise.resolve());
-        let canvas = btn._lastCanvas;
-        if (!canvas) {
-          // Clipboard path didn't run; render now.
-          await renderPngBlob();
-          canvas = btn._lastCanvas;
+        const canvas = await (canvasPromise || renderCanvas());
+
+        // If we didn't kick off a sync clipboard write, try one now with a resolved Blob
+        // (works in Firefox / older Chrome that doesn't accept Promise<Blob>).
+        if (!clipboardWritePromise && navigator.clipboard && window.ClipboardItem) {
+          try {
+            const pngBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+            if (pngBlob) {
+              clipboardWritePromise = navigator.clipboard.write([
+                new ClipboardItem({ 'image/png': pngBlob }),
+              ]);
+            }
+          } catch (err) {
+            console.info('Clipboard async write threw:', err.message);
+          }
         }
-        if (!canvas) throw new Error('no canvas');
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
-        if (!blob) throw new Error('jpeg blob missing');
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `ca-atlas-summary-${new Date().toISOString().slice(0, 10)}.jpg`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+        let clipboardOk = false;
+        if (clipboardWritePromise) {
+          try {
+            await clipboardWritePromise;
+            clipboardOk = true;
+          } catch (err) {
+            console.info('Clipboard write rejected:', err.message);
+          }
+        }
+
+        // Always also produce a JPG download.
+        const jpgBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (jpgBlob) {
+          const url = URL.createObjectURL(jpgBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `ca-atlas-summary-${new Date().toISOString().slice(0, 10)}.jpg`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+        }
+
         btn.textContent = clipboardOk ? '✓' : '⤓';
+        btn.title = clipboardOk
+          ? 'Image copied to clipboard — paste with Ctrl/Cmd+V'
+          : 'JPG downloaded (clipboard not available)';
       } catch (e) {
-        console.warn('Summary export failed:', e);
+        console.warn('Summary image export failed:', e);
         btn.textContent = '!';
       } finally {
-        delete btn._lastCanvas;
-        setTimeout(() => { btn.textContent = original; }, 1500);
+        setTimeout(() => {
+          btn.textContent = original;
+          btn.title = 'Save as JPG';
+        }, 2000);
       }
     })();
   });
