@@ -1192,7 +1192,9 @@
   }
 
   // ── CACHED FETCH (Cache API + network fallback) ───────────────
-  const ATLAS_CACHE = 'atlas-data-v2';
+  // Bump the cache name when API response shapes change so users with stale
+  // browser caches re-fetch (e.g. tighter zero-effort filter in v3).
+  const ATLAS_CACHE = 'atlas-data-v3';
   const ATLAS_CACHE_TTL = 24 * 3600 * 1000; // 1 day client-side
   const atlasInFlightFetches = new Map();
 
