@@ -1508,6 +1508,9 @@
   map.createPane('blocksPane').style.zIndex = 380;
   map.createPane('hotspotPane').style.zIndex = 640;
   map.createPane('zeroEffortPane').style.zIndex = 410;
+  // User-location pane: above hotspots (640) and tooltips (650), below popups (700).
+  map.createPane('locationPane').style.zIndex = 670;
+  map.getPane('locationPane').style.pointerEvents = 'none';
 
   // ── BASEMAPS ──────────────────────────────────────────────────
   const basemaps = {
@@ -2286,6 +2289,7 @@
       fillColor: '#e53e3e',
       fillOpacity: 0.06,
       weight: 0.8,
+      pane: 'locationPane',
     }).addTo(map);
     const icon = L.divIcon({
       className: '',
@@ -2293,7 +2297,7 @@
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     });
-    locMarker = L.marker([lat, lng], { icon, zIndexOffset: 500 }).addTo(map);
+    locMarker = L.marker([lat, lng], { icon, pane: 'locationPane', zIndexOffset: 500 }).addTo(map);
   }
 
   function onPosition(pos) {
@@ -2487,7 +2491,13 @@
 
   const storedPerm = localStorage.getItem(LOC_PERM_KEY);
 
-  if (navigator.permissions && navigator.permissions.query) {
+  if (storedPerm === 'granted') {
+    // Trust the previously-recorded grant: skip our gate entirely and let the
+    // browser handle any (rare) re-prompt itself. This guarantees the user
+    // never sees TWO popups stacked on a return visit.
+    hideGate();
+    startTracking();
+  } else if (navigator.permissions && navigator.permissions.query) {
     navigator.permissions.query({ name: 'geolocation' }).then((result) => {
       const apply = (state) => {
         if (state === 'granted') {
@@ -3046,7 +3056,7 @@
     if (html2canvasPromise) return html2canvasPromise;
     html2canvasPromise = new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+      s.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';
       s.onload = () => resolve(window.html2canvas);
       s.onerror = () => reject(new Error('html2canvas load failed'));
       document.head.appendChild(s);
