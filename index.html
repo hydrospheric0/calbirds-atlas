@@ -971,8 +971,8 @@
     .summary-grouprow th:empty { background: #f8fafc; }
     .summary-table .col-rownum { width: 1.4rem; }
     .summary-table .col-county { width: auto; }
-    .summary-table .col-total { width: 2.5rem; }
-    .summary-table .col-num { width: 2.2rem; }
+    .summary-table .col-total { width: 3rem; }
+    .summary-table .col-num { width: 2.7rem; }
     .summary-table thead tr:not(.summary-grouprow) th[data-sort-key] { /* sticky already gives a positioning context */ }
     .info-modal-copy {
       position: absolute;
@@ -1367,17 +1367,17 @@
             <th></th>
             <th></th>
             <th></th>
-            <th colspan="2" class="summary-group summary-group-check">Complete</th>
-            <th colspan="2" class="summary-group summary-group-cross">In Progress</th>
+            <th colspan="2" class="summary-group summary-group-check"><span class="summary-icon summary-check">✓</span></th>
+            <th colspan="2" class="summary-group summary-group-cross"><span class="summary-icon summary-cross">✗</span></th>
           </tr>
           <tr>
             <th class="summary-rownum-th"></th>
             <th data-sort-key="county">County <span class="sort-arrow"></span></th>
             <th data-sort-key="total"># <span class="sort-arrow"></span></th>
-            <th data-sort-key="complete"># <span class="summary-icon summary-check">✓</span> <span class="sort-arrow"></span></th>
-            <th data-sort-key="completePct">% <span class="summary-icon summary-check">✓</span> <span class="sort-arrow"></span></th>
-            <th data-sort-key="unmapped"># <span class="summary-icon summary-cross">✗</span> <span class="sort-arrow"></span></th>
-            <th data-sort-key="unmappedPct">% <span class="summary-icon summary-cross">✗</span> <span class="sort-arrow"></span></th>
+            <th data-sort-key="complete"># <span class="sort-arrow"></span></th>
+            <th data-sort-key="completePct">% <span class="sort-arrow"></span></th>
+            <th data-sort-key="unmapped"># <span class="sort-arrow"></span></th>
+            <th data-sort-key="unmappedPct">% <span class="sort-arrow"></span></th>
           </tr>
         </thead>
         <tbody id="summaryTableBody"></tbody>
