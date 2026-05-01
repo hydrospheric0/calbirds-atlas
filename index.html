@@ -2591,7 +2591,7 @@
       const data = await loadCountyData();
       countyLayer = L.geoJSON(data, {
         pane: 'countyPane',
-        style: { color: '#475569', weight: 1.2, opacity: 0.7, fillOpacity: 0 },
+        style: { color: '#1e293b', weight: 1.6, opacity: 0.85, fillOpacity: 0 },
         interactive: false,
       }).addTo(map);
     } catch (e) {
@@ -2606,7 +2606,7 @@
   }
 
   function updateCountyVisibility() {
-    if (countyEnabled && map.getZoom() >= COUNTY_MIN_ZOOM) {
+    if (countyEnabled) {
       showCounties();
     } else {
       hideCounties();
@@ -2614,7 +2614,8 @@
   }
 
   map.createPane('countyPane').style.zIndex = 390;
-  map.on('zoomend', updateCountyVisibility);
+  // Show counties immediately on load (toggle defaults to on).
+  updateCountyVisibility();
 
   document.getElementById('countyToggle').addEventListener('change', (e) => {
     countyEnabled = e.target.checked;
