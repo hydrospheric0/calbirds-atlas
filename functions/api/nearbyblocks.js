@@ -7,6 +7,7 @@ const WFS_BASE = 'https://geowebcache.ornith.cornell.edu/geoserver/wfs';
 const PROJ_PERIOD = 'EBIRD_ATL_CA_2026';
 
 const ALLOWED_ORIGINS = [
+  'https://atlas.calbirds.org',
   'https://calbirds.org',
   'https://www.calbirds.org',
   'https://calbirds-atlas.pages.dev',

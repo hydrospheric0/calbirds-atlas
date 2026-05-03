@@ -2,7 +2,7 @@
 
 A mobile-optimised web app for field use during the [California Breeding Bird Atlas (2026–2031)](https://ebird.org/atlascalifornia). Designed to help observers quickly find blocks with low coverage, check survey progress, and orient in the field.
 
-**Live app:** [calbirds-atlas.pages.dev](https://calbirds-atlas.pages.dev)
+**Live app:** [atlas.calbirds.org](https://atlas.calbirds.org) (also available at [calbirds-atlas.pages.dev](https://calbirds-atlas.pages.dev))
 
 See more projects at [hydrospheric0.github.io](https://hydrospheric0.github.io/).
 

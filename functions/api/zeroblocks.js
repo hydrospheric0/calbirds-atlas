@@ -19,6 +19,7 @@ const WFS_TIMEOUT_MS = 25000;
 const ZERO_EFFORT_CQL_BASE = `num_complete=0 AND num_coded=0 AND total_hours=0`;
 
 const ALLOWED_ORIGINS = [
+  'https://atlas.calbirds.org',
   'https://calbirds.org',
   'https://www.calbirds.org',
   'https://calbirds-atlas.pages.dev',

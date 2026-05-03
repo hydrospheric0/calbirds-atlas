@@ -6,6 +6,7 @@ const PROJ_PERIOD = 'EBIRD_ATL_CA_2026';
 
 // Allowed origins for CORS (production + Cloudflare Pages preview)
 const ALLOWED_ORIGINS = [
+  'https://atlas.calbirds.org',
   'https://calbirds.org',
   'https://www.calbirds.org',
   'https://calbirds-atlas.pages.dev',
