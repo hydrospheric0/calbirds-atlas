@@ -2536,8 +2536,15 @@
   });
 
   const storedPerm = localStorage.getItem(LOC_PERM_KEY);
+  // Headless/automated browsers (Lighthouse, PageSpeed Insights, Cloudflare
+  // speed test, Playwright, Puppeteer, Selenium) set navigator.webdriver=true.
+  // Skip the gate for them so they don't time out waiting for a click that
+  // will never come — real browsers never set this flag.
+  const isAutomated = navigator.webdriver === true;
 
-  if (storedPerm === 'granted') {
+  if (isAutomated) {
+    hideGate();
+  } else if (storedPerm === 'granted') {
     // Trust the previously-recorded grant: skip our gate entirely and let the
     // browser handle any (rare) re-prompt itself. This guarantees the user
     // never sees TWO popups stacked on a return visit.
