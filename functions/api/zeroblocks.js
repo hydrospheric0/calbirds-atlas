@@ -8,6 +8,8 @@
 //
 // KV namespace must be bound as ATLAS_KV in wrangler.toml.
 
+import { rejectIfNotAllowed, getRequestOrigin, corsHeaders as sharedCorsHeaders } from './_guard.js';
+
 const WFS_BASE = 'https://geowebcache.ornith.cornell.edu/geoserver/wfs';
 const PROJ_PERIOD = 'EBIRD_ATL_CA_2026';
 // v2: tightened CQL — exclude blocks with any effort, not just complete-checklist count.
@@ -18,16 +20,12 @@ const WFS_TIMEOUT_MS = 25000;
 // AND no logged hours. This excludes blocks with incidental/incomplete checklists.
 const ZERO_EFFORT_CQL_BASE = `num_complete=0 AND num_coded=0 AND total_hours=0`;
 
-const ALLOWED_ORIGINS = [
-  'https://atlas.calbirds.org',
-  'https://calbirds.org',
-  'https://www.calbirds.org',
-  'https://calbirds-atlas.pages.dev',
-];
-
 export async function onRequestGet(context) {
   const { env, request, waitUntil } = context;
-  const requestOrigin = request.headers.get('Origin') || '';
+  const denied = rejectIfNotAllowed(request);
+  if (denied) return denied;
+
+  const requestOrigin = getRequestOrigin(request);
   const url = new URL(request.url);
   const summaryOnly = url.searchParams.get('summary') === '1';
 
@@ -252,11 +250,5 @@ async function fetchFromWfs() {
 }
 
 function corsHeaders(contentType, requestOrigin) {
-  const origin = ALLOWED_ORIGINS.includes(requestOrigin) ? requestOrigin : ALLOWED_ORIGINS[0];
-  return {
-    'Content-Type': contentType,
-    'Access-Control-Allow-Origin': origin,
-    'Vary': 'Origin',
-    'Cache-Control': 'public, max-age=21600',
-  };
+  return sharedCorsHeaders(contentType, requestOrigin, 'public, max-age=21600');
 }

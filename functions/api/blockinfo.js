@@ -1,20 +1,17 @@
 // Cloudflare Pages Function: proxies the Cornell GeoServer WFS request
 // to avoid CORS restrictions. Available at /api/blockinfo?lat=...&lng=...
 
+import { rejectIfNotAllowed, getRequestOrigin, corsHeaders } from './_guard.js';
+
 const WFS_BASE = 'https://geowebcache.ornith.cornell.edu/geoserver/wfs';
 const PROJ_PERIOD = 'EBIRD_ATL_CA_2026';
 
-// Allowed origins for CORS (production + Cloudflare Pages preview)
-const ALLOWED_ORIGINS = [
-  'https://atlas.calbirds.org',
-  'https://calbirds.org',
-  'https://www.calbirds.org',
-  'https://calbirds-atlas.pages.dev',
-];
-
 export async function onRequestGet(context) {
+  const denied = rejectIfNotAllowed(context.request);
+  if (denied) return denied;
+
   const url = new URL(context.request.url);
-  const requestOrigin = context.request.headers.get('Origin') || '';
+  const requestOrigin = getRequestOrigin(context.request);
   const lat = parseFloat(url.searchParams.get('lat'));
   const lng = parseFloat(url.searchParams.get('lng'));
 
@@ -61,17 +58,4 @@ export async function onRequestGet(context) {
       headers: corsHeaders('application/json', requestOrigin),
     });
   }
-}
-
-function corsHeaders(contentType, requestOrigin) {
-  // Allow production domains; fall back to first allowed origin for non-matching requests
-  const origin = ALLOWED_ORIGINS.includes(requestOrigin)
-    ? requestOrigin
-    : ALLOWED_ORIGINS[0];
-  return {
-    'Content-Type': contentType,
-    'Access-Control-Allow-Origin': origin,
-    'Vary': 'Origin',
-    'Cache-Control': 'public, max-age=3600',
-  };
 }

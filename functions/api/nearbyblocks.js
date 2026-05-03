@@ -3,23 +3,21 @@
 // Returns all blocks in that area; client filters for num_complete===0.
 // Coordinates are corrected from WFS [lat,lng] to GeoJSON [lng,lat].
 
+import { rejectIfNotAllowed, getRequestOrigin, corsHeaders } from './_guard.js';
+
 const WFS_BASE = 'https://geowebcache.ornith.cornell.edu/geoserver/wfs';
 const PROJ_PERIOD = 'EBIRD_ATL_CA_2026';
-
-const ALLOWED_ORIGINS = [
-  'https://atlas.calbirds.org',
-  'https://calbirds.org',
-  'https://www.calbirds.org',
-  'https://calbirds-atlas.pages.dev',
-];
 
 // Snap a value outward (toward -inf for min, +inf for max) to nearest grid step.
 // This improves Cloudflare edge cache hit rates for nearby/overlapping viewports.
 const GRID = 0.25; // 0.25° grid (~27km)
 
 export async function onRequestGet(context) {
+  const denied = rejectIfNotAllowed(context.request);
+  if (denied) return denied;
+
   const url = new URL(context.request.url);
-  const requestOrigin = context.request.headers.get('Origin') || '';
+  const requestOrigin = getRequestOrigin(context.request);
 
   const bboxParam = url.searchParams.get('bbox');
   if (!bboxParam) {
@@ -113,14 +111,4 @@ export async function onRequestGet(context) {
       headers: corsHeaders('application/json', requestOrigin),
     });
   }
-}
-
-function corsHeaders(contentType, requestOrigin) {
-  const origin = ALLOWED_ORIGINS.includes(requestOrigin) ? requestOrigin : ALLOWED_ORIGINS[0];
-  return {
-    'Content-Type': contentType,
-    'Access-Control-Allow-Origin': origin,
-    'Vary': 'Origin',
-    'Cache-Control': 'public, max-age=3600',
-  };
 }
