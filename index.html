@@ -1258,7 +1258,7 @@
         <span class="progress-bubble-label">Progress</span>
         <span class="progress-bubble-value" id="progressBubbleValue">… / …</span>
         <span class="progress-bubble-meta">blocks with data</span>
-        <span class="progress-bubble-meta" id="progressBubblePct">… complete</span>
+        <span class="progress-bubble-meta" id="progressBubblePct">… with data</span>
       </div>
       <div id="mapFetchLoader" aria-live="polite" hidden>
         <span class="map-fetch-loader-spinner" aria-hidden="true"></span>
@@ -1931,10 +1931,10 @@
     if (Number.isFinite(stateZeroTotal)) {
       const blocksWithData = Math.max(0, stateTotal - stateZeroTotal);
       valueEl.textContent = `${formatNum(blocksWithData, 0)} / ${formatNum(stateTotal, 0)}`;
-      if (pctEl) pctEl.textContent = `${formatPercent(blocksWithData, stateTotal)} complete`;
+      if (pctEl) pctEl.textContent = `${formatPercent(blocksWithData, stateTotal)} with data`;
     } else {
       valueEl.textContent = `… / ${formatNum(stateTotal, 0)}`;
-      if (pctEl) pctEl.textContent = '… complete';
+      if (pctEl) pctEl.textContent = '… with data';
     }
   }
 
