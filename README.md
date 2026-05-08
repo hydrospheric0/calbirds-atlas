@@ -21,40 +21,8 @@ See more projects at [hydrospheric0.github.io](https://hydrospheric0.github.io/)
 
 ---
 
-## Technical Stack
+## Support
 
-### Frontend
-- Single-file SPA (`index.html`) — no build step required
-- [Leaflet.js](https://leafletjs.com/) for interactive mapping
-- Custom Leaflet panes for z-index control across tile and vector layers
-- Responsive CSS with mobile-safe-area support
+If you find this useful, consider buying me a coffee!
 
-### Backend (Cloudflare Pages Functions)
-Three serverless functions proxy requests to the Cornell Lab GeoServer WFS API, handling CORS and edge caching:
-
-| Endpoint | Description |
-|---|---|
-| `/api/nearbyblocks` | Returns atlas blocks within a bbox; supports `?zeroOnly=1` to filter to unvisited blocks |
-| `/api/zeroblocks` | Returns all zero-effort blocks statewide (legacy/fallback) |
-| `/api/blockinfo` | Returns effort data for the block at a given lat/lng via `INTERSECTS` CQL query |
-
-### Data Source
-All block effort data is fetched live from the Cornell Lab GeoServer WFS:
-- Layer: `clo:BBA_CA_EFFORT_MAP`
-- CQL filters on `num_complete`, `year_period`, `month_period`, `proj_period_id`
-- Responses are cached at the Cloudflare edge (5 min for viewport queries)
-
-### Deployment
-- Hosted on [Cloudflare Pages](https://pages.cloudflare.com/) — auto-deploys from `main` branch on GitHub push
-- No build process; static files served directly with Cloudflare Pages Functions for serverless API routes
-
----
-
-## Local Development
-
-```bash
-npm install
-npm run dev   # starts wrangler pages dev on port 7711
-```
-
-Requires [Wrangler](https://developers.cloudflare.com/workers/wrangler/).
+[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/hydrospheric0)
