@@ -1938,14 +1938,6 @@
     }
   }
 
-  function isZeroEffortFeature(feature) {
-    const p = feature?.properties || {};
-    // Mirror the server-side CQL: num_complete=0 AND num_coded=0 AND total_hours=0.
-    return Number(p.num_complete) === 0
-        && Number(p.num_coded) === 0
-        && Number(p.total_hours || 0) === 0;
-  }
-
   async function ensureZeroBlockCodeSet() {
     if (zeroBlockCodeSet) return zeroBlockCodeSet;
     if (!zeroBlockCodePromise) {

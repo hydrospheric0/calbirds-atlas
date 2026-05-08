@@ -16,7 +16,8 @@ See more projects at [hydrospheric0.github.io](https://hydrospheric0.github.io/)
 - **Zero-effort block outlines** — purple outlines showing unvisited blocks in the current viewport, loaded on demand
 - County outlines at zoom ≥ 10
 - GPS location tracking with accuracy circle and block highlighting
-- Block info panel: click any block to see effort hours, checklist counts, and block name/county
+- Block info panel: click any block to see effort hours, checklist counts, species counts, block name/county, hotspot count, and missing county blocks
+- **Summary** button — sortable state-wide county coverage table with copy-to-clipboard and JPG export
 - Overlay opacity control
 
 ---
