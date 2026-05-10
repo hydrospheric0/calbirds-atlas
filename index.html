@@ -970,7 +970,13 @@
       text-align: right;
       font-weight: 700;
       color: #0f172a;
-      min-width: 4.5rem;
+      min-width: 3rem;
+    }
+    .summary-state-totals td.pct {
+      text-align: right;
+      font-weight: 600;
+      color: #475569;
+      min-width: 3rem;
     }
     .summary-table {
       width: 100%;
@@ -1413,8 +1419,8 @@
             <th></th>
             <th></th>
             <th></th>
-            <th colspan="2" class="summary-group summary-group-check"><span class="summary-icon summary-check">✓</span></th>
-            <th colspan="2" class="summary-group summary-group-cross"><span class="summary-icon summary-cross">✗</span></th>
+            <th colspan="2" class="summary-group summary-group-check"><span class="summary-icon summary-check">✓</span> In Progress</th>
+            <th colspan="2" class="summary-group summary-group-cross"><span class="summary-icon summary-cross">✗</span> Unmapped</th>
           </tr>
           <tr>
             <th class="summary-rownum-th"></th>
@@ -1770,14 +1776,14 @@
     const tileEl = document.getElementById('hotspotCountTile');
     if (!tileEl) return;
     if (state === 'loading') {
-      tileEl.innerHTML = '<div class="stat-label">Hotspots</div><div class="stat-value">…</div><div class="stat-subvalue">Counting in block</div>';
+      tileEl.innerHTML = '<div class="stat-label">eBird Hotspots</div><div class="stat-value">…</div><div class="stat-subvalue">Counting in block</div>';
       return;
     }
     if (state === 'error') {
-      tileEl.innerHTML = '<div class="stat-label">Hotspots</div><div class="stat-value">—</div><div class="stat-subvalue">Count unavailable</div>';
+      tileEl.innerHTML = '<div class="stat-label">eBird Hotspots</div><div class="stat-value">—</div><div class="stat-subvalue">Count unavailable</div>';
       return;
     }
-    tileEl.innerHTML = `<div class="stat-label">Hotspots</div><div class="stat-value">${formatNum(count, 0)}</div><div class="stat-subvalue">eBird in block</div>`;
+    tileEl.innerHTML = `<div class="stat-label">eBird Hotspots</div><div class="stat-value">${formatNum(count, 0)}</div><div class="stat-subvalue">in block</div>`;
   }
 
   async function updateBlockHotspotTile(blockCode, geometry) {
@@ -2686,23 +2692,23 @@
     if (!tileEl) return;
     const countyName = String(county || '').trim();
     if (!countyName) {
-      tileEl.innerHTML = '<div class="stat-label">County blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
+      tileEl.innerHTML = '<div class="stat-label">Unmapped</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
       return;
     }
     const countyTotal = Number(total ?? getCountyBlockTotal(countyName)) || 0;
     if (!countyTotal) {
-      tileEl.innerHTML = '<div class="stat-label">County blocks</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
+      tileEl.innerHTML = '<div class="stat-label">Unmapped</div><div class="stat-value">—</div><div class="stat-subvalue">County unavailable</div>';
       return;
     }
     if (state === 'loading') {
-      tileEl.innerHTML = `<div class="stat-label">County blocks</div><div class="stat-value">…/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Loading blocks</div>`;
+      tileEl.innerHTML = `<div class="stat-label">Unmapped</div><div class="stat-value">…/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Loading blocks</div>`;
       return;
     }
     if (state === 'error') {
-      tileEl.innerHTML = `<div class="stat-label">County blocks</div><div class="stat-value">—/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Count unavailable</div>`;
+      tileEl.innerHTML = `<div class="stat-label">Unmapped</div><div class="stat-value">—/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">Count unavailable</div>`;
       return;
     }
-    tileEl.innerHTML = `<div class="stat-label">County blocks</div><div class="stat-value">${formatNum(missingTotal, 0)}/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">${formatPercent(missingTotal, countyTotal)} unmapped</div>`;
+    tileEl.innerHTML = `<div class="stat-label">Unmapped</div><div class="stat-value">${formatNum(missingTotal, 0)}/${formatNum(countyTotal, 0)}</div><div class="stat-subvalue">${formatPercent(missingTotal, countyTotal)} county blocks</div>`;
   }
 
   async function updateCountySummaryTiles(county) {
@@ -2810,12 +2816,12 @@
           <div class="stat-subvalue">Atlas block page ↗</div>
         </div>
         <div class="stat-card stat-card-unmapped" id="countyMissingTile">
-          <div class="stat-label">County blocks</div>
+          <div class="stat-label">Unmapped</div>
           <div class="stat-value">…</div>
           <div class="stat-subvalue">Loading</div>
         </div>
         <div class="stat-card stat-card-hotspots" id="hotspotCountTile">
-          <div class="stat-label">Hotspots</div>
+          <div class="stat-label">eBird Hotspots</div>
           <div class="stat-value">…</div>
           <div class="stat-subvalue">Counting in block</div>
         </div>
@@ -2992,9 +2998,9 @@
     summaryStateTotalsEl.innerHTML = `
       <caption>California</caption>
       <tbody>
-        <tr><td class="label">Blocks</td><td class="value">${formatNum(totalBlocks, 0)}</td></tr>
-        <tr><td class="label">Complete #</td><td class="value">${hasZeroData ? formatNum(totalComplete, 0) : '…'}</td></tr>
-        <tr><td class="label">Complete %</td><td class="value">${hasZeroData && totalBlocks ? fmtPct(totalComplete / totalBlocks) : '…'}</td></tr>
+        <tr><td class="label">Blocks</td><td class="value" colspan="2">${formatNum(totalBlocks, 0)}</td></tr>
+        <tr><td class="label">In Progress</td><td class="value">${hasZeroData ? formatNum(totalComplete, 0) : '…'}</td><td class="pct">${hasZeroData && totalBlocks ? fmtPct(totalComplete / totalBlocks) + '%' : '…'}</td></tr>
+        <tr><td class="label">Unmapped</td><td class="value">${hasZeroData ? formatNum(totalUnmapped, 0) : '…'}</td><td class="pct">${hasZeroData && totalBlocks ? fmtPct(totalUnmapped / totalBlocks) + '%' : '…'}</td></tr>
       </tbody>
     `;
     renderSummaryHeaders();
@@ -3036,7 +3042,7 @@
     const hasZero = Boolean(countyCoverageByName?.zeroByCounty)
       && Object.keys(countyCoverageByName.zeroByCounty).length > 0;
     const fmtPct = (v) => `${(v * 100).toFixed(1)}%`;
-    const lines = [['#', 'County', 'Blocks', '✓ #', '✓ %', '✗ #', '✗ %'].join('\t')];
+    const lines = [['#', 'County', 'Blocks', 'In Progress #', 'In Progress %', 'Unmapped #', 'Unmapped %'].join('\t')];
     rows.forEach((r, i) => {
       lines.push([
         i + 1,
