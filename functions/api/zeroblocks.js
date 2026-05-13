@@ -39,7 +39,14 @@ export async function onRequestGet(context) {
           parsed = JSON.parse(value);
         } catch (_) { /* serve raw KV value below */ }
 
-        const ageS = Date.now() / 1000 - (metadata?.fetchedAt || 0);
+        const fetchedAt = Number(metadata?.fetchedAt);
+        // If fetchedAt is missing or non-finite (KV written by an older code path),
+        // treat as "unknown age" — trigger a one-time background refresh but still
+        // serve the cached value, instead of computing a multi-billion-second age
+        // that would force a refresh on every request indefinitely.
+        const ageS = Number.isFinite(fetchedAt) && fetchedAt > 0
+          ? Date.now() / 1000 - fetchedAt
+          : null;
         const looksTruncated = Array.isArray(parsed) && parsed.length === 10000;
         const cachedTotal = Number(metadata?.total);
 
@@ -92,8 +99,9 @@ export async function onRequestGet(context) {
             });
           }
           waitUntil(writeToKv(env.ATLAS_KV));
-        } else if (ageS > STALE_AFTER_S) {
-          // Return stale data immediately; refresh KV in the background
+        } else if (ageS === null || ageS > STALE_AFTER_S) {
+          // Stale (or missing fetchedAt metadata): return cached data immediately,
+          // refresh KV in the background.
           waitUntil(writeToKv(env.ATLAS_KV));
         }
         return new Response(value, {
@@ -157,6 +165,25 @@ async function writeToKv(kv) {
   });
 }
 
+// Wraps fetch() with one retry on network error or 5xx, with a short backoff.
+// GeoServer occasionally returns transient 502s; one retry recovers cleanly.
+async function fetchWithRetry(url, init, { retries = 1, backoffMs = 300 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const res = await fetch(url, init);
+      if (res.ok || res.status < 500) return res;
+      lastErr = new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      lastErr = e;
+    }
+    if (attempt < retries) {
+      await new Promise((resolve) => setTimeout(resolve, backoffMs * (attempt + 1)));
+    }
+  }
+  throw lastErr || new Error('fetch failed');
+}
+
 async function fetchZeroBlockTotalFromWfs() {
   const CQL = `${ZERO_EFFORT_CQL_BASE} AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
   const wfsUrl = new URL(WFS_BASE);
@@ -175,7 +202,7 @@ async function fetchZeroBlockTotalFromWfs() {
   const controller = new AbortController();
   const tid = setTimeout(() => controller.abort(), WFS_TIMEOUT_MS);
   try {
-    const res = await fetch(wfsUrl.toString(), {
+    const res = await fetchWithRetry(wfsUrl.toString(), {
       headers: { 'User-Agent': 'CalBirds-Atlas/1.0 (calbirds.org)' },
       signal: controller.signal,
       cf: { cacheTtl: 21600, cacheEverything: true },
@@ -216,7 +243,7 @@ async function fetchFromWfs() {
     const tid = setTimeout(() => controller.abort(), WFS_TIMEOUT_MS);
     let geojson;
     try {
-      const res = await fetch(wfsUrl.toString(), {
+      const res = await fetchWithRetry(wfsUrl.toString(), {
         headers: { 'User-Agent': 'CalBirds-Atlas/1.0 (calbirds.org)' },
         signal: controller.signal,
         cf: { cacheTtl: 21600, cacheEverything: true },

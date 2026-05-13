@@ -9,7 +9,9 @@
   <meta name="theme-color" content="#0c1b50" />
   <title>CA Bird Atlas</title>
   <link rel="canonical" href="https://atlas.calbirds.org/" />
+  <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐦</text></svg>" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐦</text></svg>" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <!-- Preload the slowest data dependencies in parallel with HTML/JS parsing. -->
   <link rel="preload" as="fetch" href="/api/zeroblocks" crossorigin="anonymous" />
@@ -775,6 +777,8 @@
       font-weight: 700;
       cursor: pointer;
       font-family: inherit;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
     }
 
     .loc-gate-skip {
@@ -786,6 +790,8 @@
       font-size: 0.78rem;
       cursor: pointer;
       font-family: inherit;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
     }
 
     /* ── INFO BUTTON (topbar) ───────────────────────────────── */
@@ -1090,9 +1096,9 @@
       right: 0.18rem;
       top: 50%;
       transform: translateY(-50%);
-      width: 0.5rem;
+      width: 0.6rem;
       color: #0f172a;
-      font-size: 0.55rem;
+      font-size: 0.7rem;
       pointer-events: none;
     }
     .summary-table th.sort-active { color: #0f172a; }
@@ -1226,8 +1232,8 @@
     <h2>📍 Enable Location</h2>
     <p>Allow precise location access to center the map on your position and find the atlas block you're in.</p>
     <div class="loc-gate-btns">
-      <button id="locGateAllowBtn" class="loc-gate-allow">Allow Location Access</button>
-      <button id="locGateSkipBtn" class="loc-gate-skip">Skip — show all of California</button>
+      <button id="locGateAllowBtn" type="button" class="loc-gate-allow">Allow Location Access</button>
+      <button id="locGateSkipBtn" type="button" class="loc-gate-skip">Skip — show all of California</button>
     </div>
   </div>
 </div>
@@ -1419,15 +1425,15 @@
             <th></th>
             <th></th>
             <th></th>
-            <th colspan="2" class="summary-group summary-group-check"><span class="summary-icon summary-check">✓</span> In Progress</th>
-            <th colspan="2" class="summary-group summary-group-cross"><span class="summary-icon summary-cross">✗</span> Unmapped</th>
+            <th colspan="2" class="summary-group summary-group-check" title="Blocks with at least some effort (any complete checklist, coded species, or logged hours)"><span class="summary-icon summary-check">✓</span> In Progress</th>
+            <th colspan="2" class="summary-group summary-group-cross" title="Blocks with no effort yet — no complete checklists, no coded species, no logged hours"><span class="summary-icon summary-cross">✗</span> Unmapped</th>
           </tr>
           <tr>
             <th class="summary-rownum-th"></th>
             <th data-sort-key="county">County <span class="sort-arrow"></span></th>
             <th data-sort-key="total"># <span class="sort-arrow"></span></th>
-            <th data-sort-key="complete"># <span class="sort-arrow"></span></th>
-            <th data-sort-key="completePct">% <span class="sort-arrow"></span></th>
+            <th data-sort-key="inProgress"># <span class="sort-arrow"></span></th>
+            <th data-sort-key="inProgressPct">% <span class="sort-arrow"></span></th>
             <th data-sort-key="unmapped"># <span class="sort-arrow"></span></th>
             <th data-sort-key="unmappedPct">% <span class="sort-arrow"></span></th>
           </tr>
@@ -1625,7 +1631,17 @@
   let hotspotRows = null;
   let hotspotRowsPromise = null;
   let hotspotCountRenderToken = 0;
+  // Capped LRU-ish cache for per-block hotspot counts to bound memory on long sessions.
+  const HOTSPOT_COUNT_CACHE_MAX = 500;
   const hotspotCountByBlockCode = new Map();
+  function cacheHotspotCount(code, count) {
+    if (hotspotCountByBlockCode.has(code)) hotspotCountByBlockCode.delete(code);
+    hotspotCountByBlockCode.set(code, count);
+    if (hotspotCountByBlockCode.size > HOTSPOT_COUNT_CACHE_MAX) {
+      const oldest = hotspotCountByBlockCode.keys().next().value;
+      if (oldest !== undefined) hotspotCountByBlockCode.delete(oldest);
+    }
+  }
 
   function hotspotRadius(species) {
     const count = Number(species) || 0;
@@ -1804,7 +1820,7 @@
       const rows = await ensureHotspotRows();
       if (renderToken !== hotspotCountRenderToken || currentBlockCode !== code) return;
       const count = countHotspotsInGeometry(rows, geometry);
-      hotspotCountByBlockCode.set(code, count);
+      cacheHotspotCount(code, count);
       renderHotspotCountTile(count);
     } catch (e) {
       if (renderToken !== hotspotCountRenderToken || currentBlockCode !== code) return;
@@ -2401,9 +2417,28 @@
     lastFetchLat = null;
     lastFetchLng = null;
     showPanelLoading();
+    // Default to network-assisted location (low accuracy) — easier on battery for
+    // all-day field use. Promotes to high accuracy after the first fix.
     watchId = navigator.geolocation.watchPosition(onPosition, onPositionError,
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
+      { enableHighAccuracy: false, timeout: 20000, maximumAge: 5000 });
   }
+
+  function pauseTracking() {
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+  }
+
+  // Pause GPS watch when the page is backgrounded (battery saver). Resume on
+  // return only if the user previously granted permission.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      pauseTracking();
+    } else if (localStorage.getItem(LOC_PERM_KEY) === 'granted' && watchId === null) {
+      startTracking();
+    }
+  });
 
   // ── PANEL & DOM REFS ─────────────────────────────────────────
   const panelContent = document.getElementById('panelContent');
@@ -2815,12 +2850,12 @@
           <div class="stat-value">View</div>
           <div class="stat-subvalue">Atlas block page ↗</div>
         </div>
-        <div class="stat-card stat-card-unmapped" id="countyMissingTile">
+        <div class="stat-card stat-card-unmapped" id="countyMissingTile" title="Blocks in this county with no effort yet">
           <div class="stat-label">Unmapped</div>
           <div class="stat-value">…</div>
           <div class="stat-subvalue">Loading</div>
         </div>
-        <div class="stat-card stat-card-hotspots" id="hotspotCountTile">
+        <div class="stat-card stat-card-hotspots" id="hotspotCountTile" title="Number of eBird hotspots inside this block">
           <div class="stat-label">eBird Hotspots</div>
           <div class="stat-value">…</div>
           <div class="stat-subvalue">Counting in block</div>
@@ -2868,6 +2903,9 @@
         // Show error if nothing is loaded yet; otherwise silently ignore GPS drift outside a block
         if (!isCurrentLocation || currentBlockCode === null) {
           showPanelError('No atlas block at this location.');
+          // Tap into empty space (or first GPS fix outside any block): clear stale highlight.
+          setBlockHighlight(null);
+          currentBlockCode = null;
         }
         return;
       }
@@ -2928,13 +2966,13 @@
     return Object.keys(totals).map((county) => {
       const total = Number(totals[county]) || 0;
       const unmapped = Number(zeroes[county]) || 0;
-      const complete = Math.max(0, total - unmapped);
+      const inProgress = Math.max(0, total - unmapped);
       return {
         county,
         total,
         unmapped,
-        complete,
-        completePct: total ? complete / total : 0,
+        inProgress,
+        inProgressPct: total ? inProgress / total : 0,
         unmappedPct: total ? unmapped / total : 0,
       };
     });
@@ -2985,8 +3023,8 @@
         <td class="summary-rownum">${i + 1}</td>
         <td>${escHtml(r.county)}</td>
         <td>${formatNum(r.total, 0)}</td>
-        <td>${hasZeroData ? formatNum(r.complete, 0) : '…'}</td>
-        <td>${hasZeroData ? fmtPct(r.completePct) : '…'}</td>
+        <td>${hasZeroData ? formatNum(r.inProgress, 0) : '…'}</td>
+        <td>${hasZeroData ? fmtPct(r.inProgressPct) : '…'}</td>
         <td>${hasZeroData ? formatNum(r.unmapped, 0) : '…'}</td>
         <td>${hasZeroData ? fmtPct(r.unmappedPct) : '…'}</td>
       </tr>
@@ -2994,13 +3032,13 @@
 
     const totalBlocks = rows.reduce((s, r) => s + r.total, 0);
     const totalUnmapped = rows.reduce((s, r) => s + r.unmapped, 0);
-    const totalComplete = totalBlocks - totalUnmapped;
+    const totalInProgress = totalBlocks - totalUnmapped;
     summaryStateTotalsEl.innerHTML = `
       <caption>California</caption>
       <tbody>
         <tr><td class="label">Blocks</td><td class="value" colspan="2">${formatNum(totalBlocks, 0)}</td></tr>
-        <tr><td class="label">In Progress</td><td class="value">${hasZeroData ? formatNum(totalComplete, 0) : '…'}</td><td class="pct">${hasZeroData && totalBlocks ? fmtPct(totalComplete / totalBlocks) + '%' : '…'}</td></tr>
-        <tr><td class="label">Unmapped</td><td class="value">${hasZeroData ? formatNum(totalUnmapped, 0) : '…'}</td><td class="pct">${hasZeroData && totalBlocks ? fmtPct(totalUnmapped / totalBlocks) + '%' : '…'}</td></tr>
+        <tr><td class="label" title="Blocks with at least some effort">In Progress</td><td class="value">${hasZeroData ? formatNum(totalInProgress, 0) : '…'}</td><td class="pct">${hasZeroData && totalBlocks ? fmtPct(totalInProgress / totalBlocks) + '%' : '…'}</td></tr>
+        <tr><td class="label" title="Blocks with no effort yet">Unmapped</td><td class="value">${hasZeroData ? formatNum(totalUnmapped, 0) : '…'}</td><td class="pct">${hasZeroData && totalBlocks ? fmtPct(totalUnmapped / totalBlocks) + '%' : '…'}</td></tr>
       </tbody>
     `;
     renderSummaryHeaders();
@@ -3035,6 +3073,16 @@
     summaryModal.setAttribute('hidden', 'hidden');
   });
 
+  // Close any open modal on Escape (a11y).
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape') return;
+    if (!infoModal.hasAttribute('hidden')) {
+      infoModal.setAttribute('hidden', 'hidden');
+    } else if (!summaryModal.hasAttribute('hidden')) {
+      summaryModal.setAttribute('hidden', 'hidden');
+    }
+  });
+
   // Copy summary table as TSV (paste-friendly into Slack/Discord/Email/Sheets).
   function buildSummaryTsv() {
     const rows = getSummaryRows();
@@ -3048,21 +3096,21 @@
         i + 1,
         r.county,
         r.total,
-        hasZero ? r.complete : '',
-        hasZero ? fmtPct(r.completePct) : '',
+        hasZero ? r.inProgress : '',
+        hasZero ? fmtPct(r.inProgressPct) : '',
         hasZero ? r.unmapped : '',
         hasZero ? fmtPct(r.unmappedPct) : '',
       ].join('\t'));
     });
     const totalBlocks = rows.reduce((s, r) => s + r.total, 0);
     const totalUnmapped = rows.reduce((s, r) => s + r.unmapped, 0);
-    const totalComplete = totalBlocks - totalUnmapped;
+    const totalInProgress = totalBlocks - totalUnmapped;
     lines.push([
       '',
       'State total',
       totalBlocks,
-      hasZero ? totalComplete : '',
-      hasZero && totalBlocks ? fmtPct(totalComplete / totalBlocks) : '',
+      hasZero ? totalInProgress : '',
+      hasZero && totalBlocks ? fmtPct(totalInProgress / totalBlocks) : '',
       hasZero ? totalUnmapped : '',
       hasZero && totalBlocks ? fmtPct(totalUnmapped / totalBlocks) : '',
     ].join('\t'));

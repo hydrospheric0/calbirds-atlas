@@ -35,7 +35,7 @@ export async function onRequestGet(context) {
   wfsUrl.searchParams.set('outputFormat', 'application/json');
 
   try {
-    const upstream = await fetch(wfsUrl.toString(), {
+    const upstream = await fetchWithRetry(wfsUrl.toString(), {
       headers: { 'User-Agent': 'CalBirds-Atlas/1.0 (calbirds.org)' },
       cf: { cacheTtl: 3600, cacheEverything: true },
     });
@@ -58,4 +58,23 @@ export async function onRequestGet(context) {
       headers: corsHeaders('application/json', requestOrigin),
     });
   }
+}
+
+// Single-retry wrapper for transient WFS hiccups (Cornell GeoServer occasionally
+// returns 502s); one quick retry recovers most of them without user-visible error.
+async function fetchWithRetry(url, init, { retries = 1, backoffMs = 300 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const res = await fetch(url, init);
+      if (res.ok || res.status < 500) return res;
+      lastErr = new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      lastErr = e;
+    }
+    if (attempt < retries) {
+      await new Promise((resolve) => setTimeout(resolve, backoffMs * (attempt + 1)));
+    }
+  }
+  throw lastErr || new Error('fetch failed');
 }
