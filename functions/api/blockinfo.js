@@ -1,5 +1,7 @@
 // Cloudflare Pages Function: proxies the Cornell GeoServer WFS request
-// to avoid CORS restrictions. Available at /api/blockinfo?lat=...&lng=...
+// to avoid CORS restrictions. Accepts either:
+//   /api/blockinfo?code=ABC123       (preferred — stable cache key per block)
+//   /api/blockinfo?lat=...&lng=...   (legacy fallback for taps outside any cached geometry)
 
 import { rejectIfNotAllowed, getRequestOrigin, corsHeaders } from './_guard.js';
 
@@ -12,18 +14,30 @@ export async function onRequestGet(context) {
 
   const url = new URL(context.request.url);
   const requestOrigin = getRequestOrigin(context.request);
-  const lat = parseFloat(url.searchParams.get('lat'));
-  const lng = parseFloat(url.searchParams.get('lng'));
+  const code = url.searchParams.get('code');
 
-  if (isNaN(lat) || isNaN(lng) || lat < 32 || lat > 43 || lng < -125 || lng > -113) {
-    return new Response(JSON.stringify({ error: 'Invalid or out-of-range coordinates' }), {
-      status: 400,
-      headers: corsHeaders('application/json', requestOrigin),
-    });
+  let cql;
+  if (code) {
+    if (!/^[A-Za-z0-9]{1,32}$/.test(code)) {
+      return new Response(JSON.stringify({ error: 'Invalid block_code' }), {
+        status: 400,
+        headers: corsHeaders('application/json', requestOrigin),
+      });
+    }
+    cql = `block_code='${code}' AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
+  } else {
+    const lat = parseFloat(url.searchParams.get('lat'));
+    const lng = parseFloat(url.searchParams.get('lng'));
+
+    if (isNaN(lat) || isNaN(lng) || lat < 32 || lat > 43 || lng < -125 || lng > -113) {
+      return new Response(JSON.stringify({ error: 'Invalid or out-of-range coordinates' }), {
+        status: 400,
+        headers: corsHeaders('application/json', requestOrigin),
+      });
+    }
+    // CQL: INTERSECTS with lat,lon ordering for WFS 2.0 EPSG:4326
+    cql = `INTERSECTS(geometry,POINT(${lat} ${lng})) AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
   }
-
-  // CQL: INTERSECTS with lat,lon ordering for WFS 2.0 EPSG:4326
-  const cql = `INTERSECTS(geometry,POINT(${lat} ${lng})) AND year_period='all' AND month_period='all' AND proj_period_id='${PROJ_PERIOD}'`;
 
   const wfsUrl = new URL(WFS_BASE);
   wfsUrl.searchParams.set('SERVICE', 'WFS');

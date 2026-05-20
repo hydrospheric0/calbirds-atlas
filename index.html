@@ -481,6 +481,44 @@
         to { transform: rotate(360deg); }
       }
 
+    /* ── BANNER STACK (offline / location warnings, top-center) ─── */
+    #bannerStack {
+      position: absolute;
+      top: 0.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1060;
+      display: flex;
+      flex-direction: column;
+      gap: 0.32rem;
+      align-items: center;
+      pointer-events: none;
+      max-width: calc(100vw - 1rem);
+    }
+    #netBanner, #locBanner {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.42rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.22);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+      color: #fff;
+      font-size: 0.66rem;
+      font-weight: 700;
+      white-space: nowrap;
+      pointer-events: all;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    #netBanner { background: rgba(217, 119, 6, 0.95); }   /* amber */
+    #locBanner { background: rgba(220, 38, 38, 0.93); }   /* red */
+    #netBanner[hidden], #locBanner[hidden] { display: none; }
+    .net-banner-icon { font-size: 0.78rem; line-height: 1; }
+    .net-banner-text { line-height: 1; }
+
     /* ── MAP TOP-RIGHT CONTROLS ──────────────────────────── */
     .map-top-right {
       position: absolute;
@@ -577,6 +615,8 @@
 
     .map-ctrl-btn:active { background: rgba(12,27,80,1); }
     .map-ctrl-btn.active { background: var(--accent); border-color: var(--accent); }
+    .map-ctrl-btn.tracking { background: var(--accent); border-color: var(--accent); }
+    .map-ctrl-btn.tracking-pending { background: rgba(217, 119, 6, 0.92); border-color: rgba(255,255,255,0.32); }
 
     /* ── MAP ─────────────────────────────────────────────── */
     #mapEl {
@@ -688,6 +728,38 @@
       margin-top: 0.2rem;
       accent-color: var(--accent);
     }
+
+    /* Field mode */
+    .field-mode-desc {
+      font-size: 0.62rem;
+      color: rgba(248,250,252,0.62);
+      line-height: 1.35;
+      margin-top: 0.32rem;
+    }
+    .field-mode-action {
+      width: 100%;
+      margin-top: 0.42rem;
+      background: rgba(0,150,136,0.85);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 6px;
+      padding: 0.42rem 0.55rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .field-mode-action:active { background: var(--accent); }
+    .field-mode-action[hidden] { display: none; }
+    .field-mode-action[disabled] { opacity: 0.6; cursor: default; }
+    .field-mode-status {
+      margin-top: 0.32rem;
+      font-size: 0.6rem;
+      color: rgba(248,250,252,0.75);
+      line-height: 1.35;
+    }
+    .field-mode-status[hidden] { display: none; }
 
     /* ── LEAFLET OVERRIDES ───────────────────────────────── */
     .leaflet-control-zoom { border: none !important; }
@@ -1226,14 +1298,14 @@
 </head>
 <body>
 
-<!-- Location permission gate (hidden by default; shown only when we need to prompt) -->
+<!-- Location recovery modal (shown only after a denied/unavailable error — never on first launch). -->
 <div id="locPermGate" hidden>
   <div class="loc-gate-card">
-    <h2>📍 Enable Location</h2>
-    <p>Allow precise location access to center the map on your position and find the atlas block you're in.</p>
+    <h2 id="locGateTitle">📍 Location Unavailable</h2>
+    <p id="locGateMsg">Your device blocked or disabled location access. To use Locate me, enable Location Services for Safari in iOS Settings.</p>
     <div class="loc-gate-btns">
-      <button id="locGateAllowBtn" type="button" class="loc-gate-allow">Allow Location Access</button>
-      <button id="locGateSkipBtn" type="button" class="loc-gate-skip">Skip — show all of California</button>
+      <button id="locGateHelpBtn" type="button" class="loc-gate-allow">Show Detailed Help</button>
+      <button id="locGateCloseBtn" type="button" class="loc-gate-skip">Close</button>
     </div>
   </div>
 </div>
@@ -1251,6 +1323,16 @@
   </header>
 
   <div id="mapEl">
+    <div id="bannerStack">
+      <div id="netBanner" hidden role="status" aria-live="polite">
+        <span class="net-banner-icon" aria-hidden="true">📡</span>
+        <span class="net-banner-text" id="netBannerText">Offline — using cached data</span>
+      </div>
+      <div id="locBanner" hidden role="status" aria-live="polite">
+        <span class="net-banner-icon" aria-hidden="true">⚠️</span>
+        <span class="net-banner-text" id="locBannerText">Location unavailable — tap for help</span>
+      </div>
+    </div>
     <div id="mapLegendStack">
       <div id="mapQuickLegend" aria-label="Map key">
         <div class="map-quick-legend-item">
@@ -1283,6 +1365,15 @@
           <line x1="3" y1="6" x2="21" y2="6"/>
           <line x1="3" y1="12" x2="21" y2="12"/>
           <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <button id="locateBtn" class="map-ctrl-btn" title="Locate me" aria-label="Locate me">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3.5"/>
+          <line x1="12" y1="2.5" x2="12" y2="5"/>
+          <line x1="12" y1="19" x2="12" y2="21.5"/>
+          <line x1="2.5" y1="12" x2="5" y2="12"/>
+          <line x1="19" y1="12" x2="21.5" y2="12"/>
         </svg>
       </button>
     </div>
@@ -1352,6 +1443,18 @@
     <div class="panel-label">Overlay opacity</div>
     <input type="range" id="opacitySlider" min="10" max="100" value="70" aria-label="Overlay opacity" />
   </div>
+
+  <div class="panel-section" id="fieldModeSection">
+    <div class="panel-label">Field mode (offline cache)</div>
+    <div class="seg-btns" id="fieldModeBtns">
+      <button class="seg-btn active" data-field-mode="off">Off</button>
+      <button class="seg-btn" data-field-mode="standard">Standard</button>
+      <button class="seg-btn" data-field-mode="extended">Extended</button>
+    </div>
+    <div class="field-mode-desc" id="fieldModeDesc">Off — only what you view is cached.</div>
+    <button id="fieldModePrefetchBtn" class="field-mode-action" type="button" hidden>Cache around current location</button>
+    <div id="fieldModeStatus" class="field-mode-status" hidden></div>
+  </div>
 </div>
 
 <!-- Info modal -->
@@ -1370,7 +1473,7 @@
       </a>
     </div>
     <h3>How to use</h3>
-    <p>Tap any block on the map to see its effort statistics. Enable location to automatically track your current block while in the field.</p>
+    <p>Tap any block on the map to see its effort statistics. Tap the 📍 Locate me button (top-right of the map) to center on your position and auto-track the block you're in.</p>
     <dl class="info-defs">
       <dt>Diurnal hrs</dt><dd>Total hours of daytime survey effort</dd>
       <dt>Nocturnal hrs</dt><dd>Total hours of nighttime survey effort</dd>
@@ -1458,6 +1561,52 @@
     return `${GWC_BASE}?layers=${GWC_LAYER}&format=image/png&styles=${style}&zoom={z}&x={x}&y={y}&CQL_FILTER=${CQL}`;
   }
 
+  // ── OFFLINE / NETWORK STATUS ──────────────────────────────────
+  // Two signals: navigator.onLine (cheap but lies on captive portals / dead
+  // cell) and consecutive network-fetch failures (truthful when the lie
+  // happens). Either flips the banner on; both must clear to flip it off.
+  let consecutiveFetchFails = 0;
+  const NET_FAIL_THRESHOLD = 2;
+  function netBannerVisible() {
+    const el = document.getElementById('netBanner');
+    return el && !el.hidden;
+  }
+  function showNetBanner(text) {
+    const el = document.getElementById('netBanner');
+    const txt = document.getElementById('netBannerText');
+    if (txt && text) txt.textContent = text;
+    if (el) el.hidden = false;
+  }
+  function hideNetBanner() {
+    const el = document.getElementById('netBanner');
+    if (el) el.hidden = true;
+  }
+  function syncNetBanner() {
+    const offline = (navigator.onLine === false) || consecutiveFetchFails >= NET_FAIL_THRESHOLD;
+    if (offline) {
+      const text = navigator.onLine === false
+        ? 'Offline — using cached data'
+        : 'Network spotty — using cached data';
+      showNetBanner(text);
+    } else {
+      hideNetBanner();
+    }
+  }
+  function noteFetchSuccess() {
+    if (consecutiveFetchFails !== 0) {
+      consecutiveFetchFails = 0;
+      syncNetBanner();
+    }
+  }
+  function noteFetchFailure() {
+    consecutiveFetchFails += 1;
+    syncNetBanner();
+  }
+  window.addEventListener('online',  syncNetBanner);
+  window.addEventListener('offline', syncNetBanner);
+  // Initial sync on load (e.g. PWA launched while offline).
+  syncNetBanner();
+
   // ── CACHED FETCH (Cache API + network fallback) ───────────────
   // Bump the cache name when API response shapes change so users with stale
   // browser caches re-fetch (e.g. tighter zero-effort filter in v3).
@@ -1525,10 +1674,14 @@
       let res;
       try {
         res = await fetch(url, { signal: controller.signal });
+      } catch (e) {
+        noteFetchFailure();
+        throw e;
       } finally {
         clearTimeout(tid);
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) { noteFetchFailure(); throw new Error(`HTTP ${res.status}`); }
+      noteFetchSuccess();
       if ('caches' in window) {
         try {
           const cache = await caches.open(cacheName);
@@ -2328,6 +2481,34 @@
   zeroEffortEnabled = true;
   map.whenReady(() => preloadAppData());
 
+  // ── SERVICE WORKER REGISTRATION ───────────────────────────
+  // The SW caches blockinfo + tile responses so Field Mode prefetch and
+  // ordinary panning both build up an offline working set.
+  let swController = null;
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        swController = navigator.serviceWorker.controller || (reg.active);
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          swController = navigator.serviceWorker.controller;
+        });
+      }).catch((e) => console.warn('SW registration failed:', e.message));
+
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        const d = event.data || {};
+        if (d.type === 'prefetch-progress' || d.type === 'prefetch-done') {
+          onPrefetchProgress(d);
+        }
+      });
+    });
+  }
+  function postToSW(message) {
+    const target = navigator.serviceWorker?.controller;
+    if (!target) return false;
+    target.postMessage(message);
+    return true;
+  }
+
   // ── LOCATION TRACKING ─────────────────────────────────────
   let locMarker = null;
   let locAccCircle = null;
@@ -2338,7 +2519,30 @@
   let lastKnownLat = null;
   let lastKnownLng = null;
   let currentBlockCode = null;
+  let firstFixWatchdog = null;
   const LOC_PERM_KEY = 'atlas_loc_perm';
+  const FIRST_FIX_WATCHDOG_MS = 8000;
+
+  const locateBtn = document.getElementById('locateBtn');
+  const locBanner = document.getElementById('locBanner');
+  const locBannerText = document.getElementById('locBannerText');
+
+  function setLocateBtnState(state) {
+    if (!locateBtn) return;
+    locateBtn.classList.toggle('tracking', state === 'tracking');
+    locateBtn.classList.toggle('tracking-pending', state === 'pending');
+  }
+
+  function showLocBanner(text) {
+    if (!locBanner) return;
+    if (text && locBannerText) locBannerText.textContent = text;
+    locBanner.hidden = false;
+  }
+  function hideLocBanner() { if (locBanner) locBanner.hidden = true; }
+
+  function clearFirstFixWatchdog() {
+    if (firstFixWatchdog !== null) { clearTimeout(firstFixWatchdog); firstFixWatchdog = null; }
+  }
 
   function updateLocMarker(lat, lng, accuracy) {
     if (locAccCircle) { map.removeLayer(locAccCircle); }
@@ -2367,13 +2571,16 @@
 
     // Confirm permission worked — mark as granted on first successful fix
     localStorage.setItem(LOC_PERM_KEY, 'granted');
-    if (locPermGate) locPermGate.setAttribute('hidden', 'hidden');
+    clearFirstFixWatchdog();
+    hideLocBanner();
+    setLocateBtnState('tracking');
 
     updateLocMarker(lat, lng, accuracy);
 
     if (firstFix) {
       map.setView([lat, lng], 11, { animate: true });
       firstFix = false;
+      maybeAutoPrefetchOnFix(lat, lng);
     }
 
     // Re-fetch block only if moved > 250m (avoids constant fetches from GPS drift)
@@ -2387,23 +2594,22 @@
 
   function onPositionError(err) {
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
-    // Only re-show the gate if the user actually denied — other errors (timeout,
-    // unavailable) shouldn't force them back through the prompt.
+    clearFirstFixWatchdog();
+    setLocateBtnState('idle');
     if (err.code === 1 /* PERMISSION_DENIED */) {
-      if (locPermGate) locPermGate.removeAttribute('hidden');
       localStorage.removeItem(LOC_PERM_KEY);
-      showPanelError('Location access denied. Use Allow Location Access above to try again, or Skip to browse the map.');
+      showRecoveryModal('denied');
     } else if (err.code === 2 /* POSITION_UNAVAILABLE */) {
-      showPanelError('Location unavailable. Check your device\u2019s GPS settings, then try again.');
+      showLocBanner('Location unavailable \u2014 tap for help');
     } else {
-      showPanelError('Location timed out. Use Allow Location Access above to retry.');
+      showLocBanner('Location timed out \u2014 tap to retry');
     }
     console.warn('Geolocation error:', err.code, err.message);
   }
 
   function startTracking() {
     if (!navigator.geolocation) {
-      showPanelError('Geolocation is not supported by this browser.');
+      showLocBanner('Geolocation not supported on this device');
       return;
     }
     if (watchId !== null) {
@@ -2416,7 +2622,18 @@
     firstFix = true;
     lastFetchLat = null;
     lastFetchLng = null;
+    setLocateBtnState('pending');
+    hideLocBanner();
     showPanelLoading();
+
+    // Watchdog: if Location Services is disabled at the iOS system level,
+    // Safari may report 'granted' but never deliver a fix. Surface that as
+    // a visible banner after 8s rather than silently sitting at the 20s timeout.
+    clearFirstFixWatchdog();
+    firstFixWatchdog = setTimeout(() => {
+      if (firstFix) showLocBanner('No GPS fix yet — check iOS Location Services (tap)');
+    }, FIRST_FIX_WATCHDOG_MS);
+
     // Default to network-assisted location (low accuracy) — easier on battery for
     // all-day field use. Promotes to high accuracy after the first fix.
     watchId = navigator.geolocation.watchPosition(onPosition, onPositionError,
@@ -2428,14 +2645,15 @@
       navigator.geolocation.clearWatch(watchId);
       watchId = null;
     }
+    clearFirstFixWatchdog();
   }
 
   // Pause GPS watch when the page is backgrounded (battery saver). Resume on
-  // return only if the user previously granted permission.
+  // return only if the user previously granted permission and we had a working fix.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       pauseTracking();
-    } else if (localStorage.getItem(LOC_PERM_KEY) === 'granted' && watchId === null) {
+    } else if (localStorage.getItem(LOC_PERM_KEY) === 'granted' && watchId === null && lastKnownLat !== null) {
       startTracking();
     }
   });
@@ -2544,74 +2762,227 @@
     }
   });
 
-  // ── LOCATION PERMISSION GATE ─────────────────────────────────
-  // Decision tree on load (gate is hidden by default in HTML):
-  //   1. Permissions API says 'granted'  → startTracking, never show gate.
-  //   2. Permissions API says 'denied'   → don't show gate (would be useless).
-  //   3. Permissions API says 'prompt'   → show gate IF user hasn't 'skipped'.
-  //   4. Permissions API unsupported     → fall back to localStorage:
-  //        'granted' → startTracking; 'skipped' → stay hidden; else → show gate.
-  const locPermGate = document.getElementById('locPermGate');
+  // ── FIELD MODE (offline prefetch around current location) ────
+  // Off:       only what you view is cached (browser/SW reactive).
+  // Standard:  ~50 km radius, blockinfo + effort/block tiles z10–13.
+  // Extended:  ~100 km radius, also basemap z10–14. Larger download.
+  const FIELD_MODE_KEY = 'atlas_field_mode';
+  const FIELD_MODE_PROFILES = {
+    off:      { label: 'Off', desc: 'Off — only what you view is cached.' },
+    standard: { label: 'Standard', desc: 'Standard — ~10 blocks (50 km) cached. Block info + effort tiles z10–13. ~15 MB.', radiusKm: 50,  zooms: [10, 11, 12, 13], includeBasemap: false },
+    extended: { label: 'Extended', desc: 'Extended — ~20 blocks (100 km) cached. Includes basemap z10–14. ~50 MB on cellular.', radiusKm: 100, zooms: [10, 11, 12, 13, 14], includeBasemap: true  },
+  };
 
-  function showGate() { locPermGate.removeAttribute('hidden'); }
-  function hideGate() { locPermGate.setAttribute('hidden', 'hidden'); }
+  const fieldModeBtns = document.getElementById('fieldModeBtns');
+  const fieldModeDesc = document.getElementById('fieldModeDesc');
+  const fieldModePrefetchBtn = document.getElementById('fieldModePrefetchBtn');
+  const fieldModeStatus = document.getElementById('fieldModeStatus');
+  let prefetchInFlight = false;
 
-  document.getElementById('locGateAllowBtn').addEventListener('click', () => {
-    // Hide the in-app gate immediately so the browser's native permission
-    // prompt doesn't stack on top of it (the double-popup problem).
-    hideGate();
-    startTracking();
+  function getFieldMode() {
+    const v = localStorage.getItem(FIELD_MODE_KEY);
+    return FIELD_MODE_PROFILES[v] ? v : 'off';
+  }
+  function setFieldMode(mode) {
+    if (!FIELD_MODE_PROFILES[mode]) mode = 'off';
+    localStorage.setItem(FIELD_MODE_KEY, mode);
+    updateFieldModeUI();
+  }
+  function updateFieldModeUI() {
+    const mode = getFieldMode();
+    fieldModeBtns?.querySelectorAll('[data-field-mode]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.fieldMode === mode);
+    });
+    if (fieldModeDesc) fieldModeDesc.textContent = FIELD_MODE_PROFILES[mode].desc;
+    if (fieldModePrefetchBtn) {
+      fieldModePrefetchBtn.hidden = (mode === 'off');
+      fieldModePrefetchBtn.disabled = prefetchInFlight || (mode === 'off');
+      fieldModePrefetchBtn.textContent = prefetchInFlight
+        ? 'Caching…'
+        : (lastKnownLat !== null ? 'Cache around current location' : 'Cache around current view');
+    }
+  }
+  fieldModeBtns?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-field-mode]');
+    if (!btn) return;
+    setFieldMode(btn.dataset.fieldMode);
+  });
+  fieldModePrefetchBtn?.addEventListener('click', () => {
+    const mode = getFieldMode();
+    if (mode === 'off') return;
+    const lat = lastKnownLat ?? map.getCenter().lat;
+    const lng = lastKnownLng ?? map.getCenter().lng;
+    runFieldModePrefetch(lat, lng, mode);
   });
 
-  document.getElementById('locGateSkipBtn').addEventListener('click', () => {
-    hideGate();
-    localStorage.setItem(LOC_PERM_KEY, 'skipped');
-  });
+  // Tile math (slippy XYZ).
+  function lng2tile(lng, z) {
+    return Math.floor(((lng + 180) / 360) * Math.pow(2, z));
+  }
+  function lat2tile(lat, z) {
+    const rad = (lat * Math.PI) / 180;
+    return Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * Math.pow(2, z));
+  }
 
-  const storedPerm = localStorage.getItem(LOC_PERM_KEY);
-  // Headless/automated browsers (Lighthouse, PageSpeed Insights, Cloudflare
-  // speed test, Playwright, Puppeteer, Selenium) set navigator.webdriver=true.
-  // Skip the gate for them so they don't time out waiting for a click that
-  // will never come — real browsers never set this flag.
-  const isAutomated = navigator.webdriver === true;
+  function buildPrefetchUrls(lat, lng, profile) {
+    const urls = new Set();
+    // ≈ 111 km per degree of latitude. Use a square buffer for tile math
+    // simplicity (a tighter circle saves little once tile grids snap outward).
+    const dLat = profile.radiusKm / 111;
+    const dLng = profile.radiusKm / (111 * Math.cos((lat * Math.PI) / 180) || 1);
+    const south = lat - dLat, north = lat + dLat;
+    const west  = lng - dLng, east  = lng + dLng;
 
-  if (isAutomated) {
-    hideGate();
-  } else if (storedPerm === 'granted') {
-    // Trust the previously-recorded grant: skip our gate entirely and let the
-    // browser handle any (rare) re-prompt itself. This guarantees the user
-    // never sees TWO popups stacked on a return visit.
-    hideGate();
-    startTracking();
-  } else if (navigator.permissions && navigator.permissions.query) {
-    navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-      const apply = (state) => {
-        if (state === 'granted') {
-          // Browser remembers the grant — start silently, no gate.
-          localStorage.setItem(LOC_PERM_KEY, 'granted');
-          hideGate();
-          startTracking();
-        } else if (state === 'denied') {
-          hideGate();
-        } else { // 'prompt'
-          if (storedPerm === 'skipped') {
-            hideGate();
-          } else {
-            showGate();
+    // 1. Block-info codes for any block whose bbox intersects the buffer.
+    if (microBlockFeatureMap) {
+      for (const feature of microBlockFeatureMap.values()) {
+        const b = feature._bbox;
+        if (!b) continue;
+        if (b.maxLat < south || b.minLat > north || b.maxLng < west || b.minLng > east) continue;
+        urls.add(`/api/blockinfo?code=${encodeURIComponent(feature.properties.block_code)}`);
+      }
+    }
+
+    // 2. Tile URLs across the buffer for each requested zoom.
+    for (const z of profile.zooms) {
+      const xMin = Math.max(0, lng2tile(west,  z));
+      const xMax = Math.min(Math.pow(2, z) - 1, lng2tile(east, z));
+      const yMin = Math.max(0, lat2tile(north, z));
+      const yMax = Math.min(Math.pow(2, z) - 1, lat2tile(south, z));
+      for (let x = xMin; x <= xMax; x++) {
+        for (let y = yMin; y <= yMax; y++) {
+          // Effort overlay (current style) + block-status outline.
+          urls.add(`${GWC_BASE}?layers=${GWC_LAYER}&format=image/png&styles=${activeLayerStyle}&zoom=${z}&x=${x}&y=${y}&CQL_FILTER=${CQL}`);
+          urls.add(`${GWC_BASE}?layers=${GWC_LAYER}&format=image/png&styles=bba_block_status&zoom=${z}&x=${x}&y=${y}&CQL_FILTER=${CQL}`);
+          if (profile.includeBasemap) {
+            // Cache whichever basemap is currently selected — that's the one
+            // the user will see when they go offline.
+            if (currentBase === 'osm') {
+              urls.add(`https://tile.openstreetmap.org/${z}/${x}/${y}.png`);
+            } else if (currentBase === 'esri-topo') {
+              urls.add(`https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${z}/${y}/${x}`);
+            } else if (currentBase === 'esri-sat') {
+              urls.add(`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`);
+            }
           }
         }
-      };
-      apply(result.state);
-      result.addEventListener('change', () => apply(result.state));
-    }).catch(() => {
-      // Permissions API rejected — fall back to localStorage.
-      if (storedPerm === 'granted') startTracking();
-      else if (storedPerm !== 'skipped') showGate();
-    });
-  } else {
-    // No Permissions API — fall back to localStorage.
-    if (storedPerm === 'granted') startTracking();
-    else if (storedPerm !== 'skipped') showGate();
+      }
+    }
+    return Array.from(urls);
+  }
+
+  function setFieldStatus(text, persist = true) {
+    if (!fieldModeStatus) return;
+    if (!text) { fieldModeStatus.hidden = true; fieldModeStatus.textContent = ''; return; }
+    fieldModeStatus.hidden = false;
+    fieldModeStatus.textContent = text;
+    if (!persist) setTimeout(() => { if (fieldModeStatus.textContent === text) setFieldStatus(''); }, 4000);
+  }
+
+  function onPrefetchProgress(d) {
+    if (d.type === 'prefetch-done') {
+      prefetchInFlight = false;
+      updateFieldModeUI();
+      setFieldStatus(`Cached ${d.done}/${d.total} items${d.failed ? ` (${d.failed} failed)` : ''}.`, false);
+    } else {
+      setFieldStatus(`Caching… ${d.done}/${d.total}`);
+    }
+  }
+
+  async function runFieldModePrefetch(lat, lng, mode) {
+    if (prefetchInFlight) return;
+    const profile = FIELD_MODE_PROFILES[mode];
+    if (!profile || !profile.zooms) return;
+    if (!navigator.serviceWorker?.controller) {
+      setFieldStatus('Service worker not ready — try again in a few seconds.', false);
+      return;
+    }
+    // Make sure the block geometry index is loaded so we can enumerate codes.
+    try { await ensureMicroBlockFeatureMap(); } catch (_) {}
+    const urls = buildPrefetchUrls(lat, lng, profile);
+    if (urls.length === 0) { setFieldStatus('Nothing to cache for this area.', false); return; }
+    prefetchInFlight = true;
+    updateFieldModeUI();
+    setFieldStatus(`Caching… 0/${urls.length}`);
+    postToSW({ type: 'prefetch', urls, concurrency: 4 });
+  }
+
+  // On first successful location fix, auto-prefetch if the user has Field Mode on.
+  let autoPrefetchedForFix = false;
+  function maybeAutoPrefetchOnFix(lat, lng) {
+    if (autoPrefetchedForFix) return;
+    const mode = getFieldMode();
+    if (mode === 'off') return;
+    autoPrefetchedForFix = true;
+    runFieldModePrefetch(lat, lng, mode);
+  }
+
+  updateFieldModeUI();
+
+  // ── LOCATION FLOW (lazy-locate; no launch gate) ──────────────
+  // The map opens at California state extent. Location is only requested when
+  // the user taps the "Locate me" control. Returning users with a stored grant
+  // start tracking silently; the watchdog handles "Settings says yes but no
+  // fix is arriving" (iOS Location Services off at the system level).
+  //
+  // #locPermGate is now a *recovery* modal — shown only after we hit
+  // PERMISSION_DENIED at runtime — to point the user at the iOS Settings help.
+
+  const locPermGate = document.getElementById('locPermGate');
+  const locGateTitle = document.getElementById('locGateTitle');
+  const locGateMsg = document.getElementById('locGateMsg');
+
+  function showRecoveryModal(reason) {
+    if (!locPermGate) return;
+    if (reason === 'denied') {
+      locGateTitle.textContent = '📍 Location Blocked';
+      locGateMsg.textContent = 'Safari has location access turned off for this site. To use Locate me, allow location in Settings → Safari → Location, then reload.';
+    } else if (reason === 'unavailable') {
+      locGateTitle.textContent = '📍 Location Unavailable';
+      locGateMsg.textContent = 'Your device could not provide a location fix. Check that Location Services are on in iOS Settings → Privacy & Security → Location Services.';
+    }
+    locPermGate.removeAttribute('hidden');
+  }
+  function hideRecoveryModal() { if (locPermGate) locPermGate.setAttribute('hidden', 'hidden'); }
+
+  document.getElementById('locGateHelpBtn').addEventListener('click', () => {
+    hideRecoveryModal();
+    // Reuse the existing info modal (it already has an iOS settings section).
+    document.getElementById('infoModal').removeAttribute('hidden');
+  });
+  document.getElementById('locGateCloseBtn').addEventListener('click', hideRecoveryModal);
+
+  // Locate button: the one entry point for location. First tap → triggers
+  // Safari's native prompt (no in-app prompt stacked on top). Subsequent taps
+  // re-center on the user. If permission was already denied at the browser
+  // level, show the recovery modal instead of looping into another timeout.
+  async function onLocateClick() {
+    hideLocBanner();
+    if (!navigator.geolocation) {
+      showLocBanner('Geolocation not supported on this device');
+      return;
+    }
+    // Already tracking — just re-center.
+    if (watchId !== null) { startTracking(); return; }
+    // Probe permission state first so we don't fire a watch that will only
+    // resolve via timeout when the browser already said no.
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        const result = await navigator.permissions.query({ name: 'geolocation' });
+        if (result.state === 'denied') { showRecoveryModal('denied'); return; }
+      } catch (_) { /* fall through to startTracking */ }
+    }
+    startTracking();
+  }
+  if (locateBtn) locateBtn.addEventListener('click', onLocateClick);
+  if (locBanner) locBanner.addEventListener('click', () => showRecoveryModal('unavailable'));
+
+  // Auto-resume for returning users: if we recorded a successful fix before,
+  // start silently. The watchdog will catch the "system-disabled" edge case.
+  const storedPerm = localStorage.getItem(LOC_PERM_KEY);
+  const isAutomated = navigator.webdriver === true;
+  if (!isAutomated && storedPerm === 'granted') {
+    startTracking();
   }
 
   // ── COUNTY OUTLINES (zoom ≥ 10) ──────────────────────────────
@@ -2884,7 +3255,97 @@
     }).addTo(map);
   }
 
+  // ── POINT-IN-POLYGON (resolve lat/lng → block_code locally) ──
+  // Ray-casting test on the cached block geometry. Lets us hit /api/blockinfo
+  // by code so a tap anywhere inside a previously-visited block resolves from
+  // cache (instead of the lat/lng-keyed cache missing on every micro-shift).
+  function pointInRing(lng, lat, ring) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1];
+      const xj = ring[j][0], yj = ring[j][1];
+      const intersect = ((yi > lat) !== (yj > lat))
+        && (lng < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-12) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+  function pointInGeometry(lng, lat, geom) {
+    if (!geom) return false;
+    if (geom.type === 'Polygon') {
+      const rings = geom.coordinates;
+      if (!rings.length || !pointInRing(lng, lat, rings[0])) return false;
+      for (let i = 1; i < rings.length; i++) {
+        if (pointInRing(lng, lat, rings[i])) return false; // hole
+      }
+      return true;
+    }
+    if (geom.type === 'MultiPolygon') {
+      for (const poly of geom.coordinates) {
+        if (pointInGeometry(lng, lat, { type: 'Polygon', coordinates: poly })) return true;
+      }
+    }
+    return false;
+  }
+  async function resolveBlockCodeFromLatLng(lat, lng) {
+    let map;
+    try { map = await ensureMicroBlockFeatureMap(); } catch (_) { return null; }
+    if (!map) return null;
+    for (const feature of map.values()) {
+      const b = feature._bbox;
+      if (!b) continue;
+      if (lng < b.minLng || lng > b.maxLng || lat < b.minLat || lat > b.maxLat) continue;
+      if (pointInGeometry(lng, lat, feature.geometry)) {
+        return feature.properties.block_code;
+      }
+    }
+    return null;
+  }
+
   // ── SHARED BLOCK FETCH ───────────────────────────────────────
+  // Strategy:
+  //   1. Resolve a block_code locally from lat/lng (point-in-polygon on the
+  //      cached geometry). If we got one, prefer the /api/blockinfo?code=...
+  //      endpoint — same code always hits the same client+edge cache entry.
+  //   2. Try the network. On success, also write the response to the atlas
+  //      cache so the same block resolves offline next time.
+  //   3. On network failure, fall back to whatever is in the cache.
+  const BLOCKINFO_CACHE_TTL = 24 * 3600 * 1000;
+
+  function blockinfoEndpointFor(code, lat, lng) {
+    if (code) return `/api/blockinfo?code=${encodeURIComponent(code)}`;
+    return `/api/blockinfo?lat=${lat}&lng=${lng}`;
+  }
+
+  async function fetchBlockInfo(endpoint) {
+    // Online path: refresh from network, persist to cache. Offline path:
+    // serve from cache if present, otherwise propagate the error.
+    if ('caches' in window) {
+      try {
+        const res = await fetch(endpoint);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        noteFetchSuccess();
+        try {
+          const cache = await caches.open(ATLAS_CACHE);
+          const body = await res.clone().blob();
+          const headers = new Headers({ 'Content-Type': 'application/json', 'x-atlas-cached': String(Date.now()) });
+          await cache.put(endpoint, new Response(body, { headers }));
+        } catch (_) { /* cache write failed */ }
+        return await res.json();
+      } catch (err) {
+        noteFetchFailure();
+        const cached = await getFreshCachedResponse(ATLAS_CACHE, endpoint, BLOCKINFO_CACHE_TTL);
+        if (cached) return cached.json();
+        throw err;
+      }
+    }
+    // No Cache API available — direct fetch only.
+    const res = await fetch(endpoint);
+    if (!res.ok) { noteFetchFailure(); throw new Error(`HTTP ${res.status}`); }
+    noteFetchSuccess();
+    return res.json();
+  }
+
   async function fetchAndShowBlock(lat, lng, isCurrentLocation) {
     // For tap-initiated fetches show loading immediately; for GPS updates keep
     // the current block's stats visible until new data arrives so the panel
@@ -2892,18 +3353,15 @@
     if (!isCurrentLocation) showPanelLoading();
     await ensureBlockNames();
 
-    const endpoint = `/api/blockinfo?lat=${lat}&lng=${lng}`;
+    const localCode = await resolveBlockCodeFromLatLng(lat, lng);
+    const endpoint = blockinfoEndpointFor(localCode, lat, lng);
 
     try {
-      const res = await fetch(endpoint);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await fetchBlockInfo(endpoint);
 
       if (!data.features || data.features.length === 0) {
-        // Show error if nothing is loaded yet; otherwise silently ignore GPS drift outside a block
         if (!isCurrentLocation || currentBlockCode === null) {
           showPanelError('No atlas block at this location.');
-          // Tap into empty space (or first GPS fix outside any block): clear stale highlight.
           setBlockHighlight(null);
           currentBlockCode = null;
         }
@@ -2913,7 +3371,6 @@
       const feat = data.features[0];
       const incomingCode = feat.properties.block_code;
       if (isCurrentLocation) {
-        // Skip re-render if still in the same block (watchPosition noise)
         if (incomingCode && incomingCode === currentBlockCode) return;
         currentBlockCode = incomingCode;
         setBlockHighlight(feat.geometry);
@@ -2924,8 +3381,6 @@
         renderPanel(feat.properties, false, feat.geometry);
       }
     } catch (err) {
-      // Keep the currently displayed block visible on background GPS fetch failures,
-      // but always show an error for a user-initiated tap fetch.
       if (isCurrentLocation && currentBlockCode !== null) {
         // silent — keep existing block visible
       } else {
