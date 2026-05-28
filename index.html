@@ -1655,6 +1655,18 @@
     }
   }
 
+  // Any cached copy, regardless of TTL — used as offline fallback when the
+  // network fetch fails so reloads out of cell range keep showing data.
+  async function getAnyCachedResponse(cacheName, cacheKey) {
+    if (!('caches' in window)) return null;
+    try {
+      const cache = await caches.open(cacheName);
+      return (await cache.match(cacheKey)) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function hasFreshCacheEntry(cacheName, cacheKey, ttlMs) {
     return Boolean(await getFreshCachedResponse(cacheName, cacheKey, ttlMs));
   }
@@ -1676,11 +1688,18 @@
         res = await fetch(url, { signal: controller.signal });
       } catch (e) {
         noteFetchFailure();
+        const stale = await getAnyCachedResponse(cacheName, cacheKey);
+        if (stale) return stale.json();
         throw e;
       } finally {
         clearTimeout(tid);
       }
-      if (!res.ok) { noteFetchFailure(); throw new Error(`HTTP ${res.status}`); }
+      if (!res.ok) {
+        noteFetchFailure();
+        const stale = await getAnyCachedResponse(cacheName, cacheKey);
+        if (stale) return stale.json();
+        throw new Error(`HTTP ${res.status}`);
+      }
       noteFetchSuccess();
       if ('caches' in window) {
         try {
@@ -3334,7 +3353,9 @@
         return await res.json();
       } catch (err) {
         noteFetchFailure();
-        const cached = await getFreshCachedResponse(ATLAS_CACHE, endpoint, BLOCKINFO_CACHE_TTL);
+        const cached =
+          (await getFreshCachedResponse(ATLAS_CACHE, endpoint, BLOCKINFO_CACHE_TTL)) ||
+          (await getAnyCachedResponse(ATLAS_CACHE, endpoint));
         if (cached) return cached.json();
         throw err;
       }
