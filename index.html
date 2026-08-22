@@ -3085,17 +3085,11 @@
   if (locBanner) locBanner.addEventListener('click', () => showRecoveryModal('unavailable'));
 
   // Auto-resume for returning users: if we recorded a successful fix before,
-  // start tracking and show a subtle banner so the user knows.
+  // start tracking silently. GPS accuracy bubble will show below progress on first fix.
   const storedPerm = localStorage.getItem(LOC_PERM_KEY);
   const isAutomated = navigator.webdriver === true;
   if (!isAutomated && storedPerm === 'granted') {
     startTracking();
-    // Brief notification that tracking is active (banner will be hidden on first fix)
-    setTimeout(() => {
-      if (firstFix && watchId !== null) {
-        showLocBanner('Location tracking active');
-      }
-    }, 200);
   }
 
   // ── COUNTY OUTLINES (zoom ≥ 10) ──────────────────────────────
