@@ -11,3 +11,8 @@ pushit.sh
 test_*.js
 # Local utility scripts
 simplify.py
+
+# Generated/build files
+functions/_middleware.js
+manifest.webmanifest
+sw.js
