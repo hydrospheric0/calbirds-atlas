@@ -9,3 +9,5 @@ pushit.sh
 
 # Test files
 test_*.js
+# Local utility scripts
+simplify.py
