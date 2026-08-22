@@ -573,10 +573,8 @@
       flex-direction: row;
       align-items: center;
       gap: 0;
-      padding: 0.35rem 0.75rem;
+      padding: 0.22rem 0.75rem;
       overflow: hidden;
-      max-width: 25%;
-      align-self: flex-start;
     }
     #mapLegend.visible { display: flex; }
     #mapLegendLabel {
@@ -610,7 +608,7 @@
     }
     .legend-swatch {
       width: 100%;
-      height: 1.5rem;
+      height: 0.75rem;
       border-radius: 0;
     }
     .legend-entry:first-child .legend-swatch { border-radius: 3px 0 0 3px; }
@@ -2689,6 +2687,8 @@
     }
   }
 
+  let userInitiatedTracking = false;
+
   function onPositionError(err) {
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
     clearFirstFixWatchdog();
@@ -2697,9 +2697,11 @@
       localStorage.removeItem(LOC_PERM_KEY);
       showRecoveryModal('denied');
     } else if (err.code === 2 /* POSITION_UNAVAILABLE */) {
-      showLocBanner('Location unavailable \u2014 tap for help');
+      // Only show banner if user explicitly requested location (not auto-resume)
+      if (userInitiatedTracking) showLocBanner('Location unavailable \u2014 tap for help');
     } else {
-      showLocBanner('Location timed out \u2014 tap to retry');
+      // Only show timeout banner if user explicitly requested location
+      if (userInitiatedTracking) showLocBanner('Location timed out \u2014 tap to retry');
     }
     console.warn('Geolocation error:', err.code, err.message);
   }
@@ -3069,6 +3071,8 @@
       showLocBanner('Geolocation not supported on this device');
       return;
     }
+    // Mark that user explicitly requested location (not auto-resume)
+    userInitiatedTracking = true;
     // Already tracking — just re-center.
     if (watchId !== null) { startTracking(); return; }
     // Probe permission state first so we don't fire a watch that will only
