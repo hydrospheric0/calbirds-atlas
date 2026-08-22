@@ -3,3 +3,9 @@
 .config/
 .npm/
 node_modules/
+
+# Build & deploy scripts
+pushit.sh
+
+# Test files
+test_*.js
