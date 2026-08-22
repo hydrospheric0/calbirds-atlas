@@ -2539,15 +2539,28 @@
   addBlockLayer();
   zeroEffortEnabled = true;
   map.whenReady(() => {
-    preloadAppData().catch((err) => {
-      console.error('Data preload failed:', err);
-      // Ensure loader finishes even if data fails
+    // Set a hard timeout - loader MUST disappear after 10 seconds
+    const hardTimeout = setTimeout(() => {
+      console.warn('Data preload timeout - forcing loader to finish');
       const loader = document.getElementById('dataLoader');
-      if (loader) {
+      if (loader && !loader.classList.contains('done')) {
         loader.classList.add('done');
         setTimeout(() => loader?.remove(), 400);
       }
-    });
+    }, 10000);
+
+    preloadAppData()
+      .then(() => clearTimeout(hardTimeout))
+      .catch((err) => {
+        clearTimeout(hardTimeout);
+        console.error('Data preload failed:', err);
+        // Ensure loader finishes even if data fails
+        const loader = document.getElementById('dataLoader');
+        if (loader) {
+          loader.classList.add('done');
+          setTimeout(() => loader?.remove(), 400);
+        }
+      });
   });
 
   // ── SERVICE WORKER REGISTRATION ───────────────────────────
@@ -2613,18 +2626,25 @@
     if (firstFixWatchdog !== null) { clearTimeout(firstFixWatchdog); firstFixWatchdog = null; }
   }
 
-  function updateGpsAccuracyDisplay(accuracy) {
+  function updateGpsAccuracyDisplay(accuracy, mode = 'gps') {
     const bubble = document.getElementById('mapGpsAccuracyBubble');
     const valueEl = document.getElementById('gpsAccuracyValue');
     if (!bubble || !valueEl) return;
 
-    const accuracyText = accuracy < 10
-      ? `${accuracy.toFixed(0)}m (Excellent)`
-      : accuracy < 20
-      ? `${accuracy.toFixed(0)}m (Good)`
-      : accuracy < 50
-      ? `${accuracy.toFixed(0)}m (Fair)`
-      : `${accuracy.toFixed(0)}m (Poor)`;
+    let accuracyText;
+    if (mode === 'network') {
+      accuracyText = `${accuracy.toFixed(0)}m (Network Location)`;
+    } else if (mode === 'error') {
+      accuracyText = accuracy;  // Just show the error message
+    } else {
+      accuracyText = accuracy < 10
+        ? `${accuracy.toFixed(0)}m (Excellent)`
+        : accuracy < 20
+        ? `${accuracy.toFixed(0)}m (Good)`
+        : accuracy < 50
+        ? `${accuracy.toFixed(0)}m (Fair)`
+        : `${accuracy.toFixed(0)}m (Poor)`;
+    }
 
     valueEl.textContent = accuracyText;
 
@@ -2663,9 +2683,12 @@
   function onPosition(pos) {
     const { latitude: lat, longitude: lng, accuracy } = pos.coords;
 
-    // Reject low-confidence GPS fixes (accuracy typically > 50m is noise)
-    // This prevents jumping to wrong blocks on poor signal
-    if (accuracy > 50) {
+    // Detect if this is network location (fallback) vs GPS
+    // Network location typically has accuracy > 1000m
+    const isNetworkLocation = accuracy > 1000;
+
+    // Reject very poor fixes, but allow network location
+    if (accuracy > 50 && !isNetworkLocation) {
       console.warn(`GPS fix rejected: low confidence (accuracy ${accuracy.toFixed(0)}m). Waiting for better fix.`);
       return;
     }
@@ -2680,7 +2703,13 @@
     setLocateBtnState('tracking');
 
     updateLocMarker(lat, lng, accuracy);
-    updateGpsAccuracyDisplay(accuracy);
+
+    // Show appropriate accuracy display
+    if (isNetworkLocation) {
+      updateGpsAccuracyDisplay(accuracy, 'network');
+    } else {
+      updateGpsAccuracyDisplay(accuracy, 'gps');
+    }
 
     if (firstFix) {
       map.setView([lat, lng], 11, { animate: true });
@@ -2698,20 +2727,30 @@
   }
 
   let userInitiatedTracking = false;
+  let gpsFallbackAttempted = false;
 
   function onPositionError(err) {
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
     clearFirstFixWatchdog();
     setLocateBtnState('idle');
+
     if (err.code === 1 /* PERMISSION_DENIED */) {
       localStorage.removeItem(LOC_PERM_KEY);
       showRecoveryModal('denied');
-    } else if (err.code === 2 /* POSITION_UNAVAILABLE */) {
-      // Only show banner if user explicitly requested location (not auto-resume)
-      if (userInitiatedTracking) showLocBanner('Location unavailable \u2014 tap for help');
-    } else {
-      // Only show timeout banner if user explicitly requested location
-      if (userInitiatedTracking) showLocBanner('Location timed out \u2014 tap to retry');
+    } else if (err.code === 3 /* TIMEOUT */ || err.code === 2 /* POSITION_UNAVAILABLE */) {
+      // Try network location fallback if GPS times out and user initiated
+      if (userInitiatedTracking && !gpsFallbackAttempted && watchId === null) {
+        gpsFallbackAttempted = true;
+        console.log('GPS timeout - switching to network location');
+        updateGpsAccuracyDisplay('Trying network location...', 'error');
+
+        // Fall back to network-assisted location
+        watchId = navigator.geolocation.watchPosition(onPosition, onPositionError,
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 2000 });
+      } else if (userInitiatedTracking) {
+        // Show error in bubble instead of banner
+        updateGpsAccuracyDisplay('Location unavailable', 'error');
+      }
     }
     console.warn('Geolocation error:', err.code, err.message);
   }
@@ -2731,6 +2770,7 @@
     firstFix = true;
     lastFetchLat = null;
     lastFetchLng = null;
+    gpsFallbackAttempted = false;
     setLocateBtnState('pending');
     hideLocBanner();
     showPanelLoading();
