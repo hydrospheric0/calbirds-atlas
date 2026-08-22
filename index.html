@@ -2538,7 +2538,17 @@
   updateLegend('bba_effort_hrs_diurnal');
   addBlockLayer();
   zeroEffortEnabled = true;
-  map.whenReady(() => preloadAppData());
+  map.whenReady(() => {
+    preloadAppData().catch((err) => {
+      console.error('Data preload failed:', err);
+      // Ensure loader finishes even if data fails
+      const loader = document.getElementById('dataLoader');
+      if (loader) {
+        loader.classList.add('done');
+        setTimeout(() => loader?.remove(), 400);
+      }
+    });
+  });
 
   // ── SERVICE WORKER REGISTRATION ───────────────────────────
   // The SW caches blockinfo + tile responses so Field Mode prefetch and
