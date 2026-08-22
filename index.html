@@ -2723,19 +2723,25 @@
     hideLocBanner();
     showPanelLoading();
 
-    // Watchdog: if Location Services is disabled at the iOS system level,
-    // Safari may report 'granted' but never deliver a fix. Surface that as
-    // a visible banner after 4s (slightly less than the 5s geolocation timeout)
-    // rather than silently sitting at the timeout.
+    // Try high-accuracy GPS first, with fallback to network location.
+    // First attempt: high-accuracy GPS with 5s timeout.
     clearFirstFixWatchdog();
-    firstFixWatchdog = setTimeout(() => {
-      if (firstFix) showLocBanner('No GPS fix yet — check iOS Location Services (tap)');
-    }, 4000);
+    let gpsFallbackInitiated = false;
 
-    // Use high-accuracy GPS for reliable field tracking.
-    // iPad geolocation performs better with enableHighAccuracy: true.
     watchId = navigator.geolocation.watchPosition(onPosition, onPositionError,
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
+
+    // If GPS doesn't get a fix after 6s, fall back to network location (low-accuracy).
+    firstFixWatchdog = setTimeout(() => {
+      if (firstFix && !gpsFallbackInitiated && watchId !== null) {
+        gpsFallbackInitiated = true;
+        navigator.geolocation.clearWatch(watchId);
+        showLocBanner('Using network location (GPS unavailable)');
+        // Fallback to network-assisted location
+        watchId = navigator.geolocation.watchPosition(onPosition, onPositionError,
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 2000 });
+      }
+    }, 6000);
   }
 
   function pauseTracking() {
